@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'classic_shell.dart';
+import 'native/app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,23 +13,5 @@ void main() {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
-  runApp(const TwinkApp());
-}
-
-class TwinkApp extends StatelessWidget {
-  const TwinkApp({super.key});
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'WordyTwink',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: Colors.black,
-      colorScheme: const ColorScheme.dark(
-        primary: Colors.white,
-        secondary: Colors.white,
-      ),
-    ),
-    home: const ClassicShell(),
-  );
+  runApp(const NativeTwinkApp());
 }

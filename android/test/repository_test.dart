@@ -11,6 +11,30 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
   test(
+    'time preserves both original daily statistics representations',
+    () async {
+      for (final value in <dynamic>[
+        100,
+        {'seconds': 100, 'source': 'legacy'},
+      ]) {
+        final store = TwinkStore()..startDemo();
+        store.data!['stats'] = {
+          'daily': {logicalDay(): value},
+        };
+        await store.addTime(12);
+        final result = asMap(
+          asMap(store.data!['stats'])['daily'],
+        )[logicalDay()];
+        if (value is Map) {
+          expect(result, {'seconds': 112, 'source': 'legacy'});
+        } else {
+          expect(result, 112);
+        }
+        store.dispose();
+      }
+    },
+  );
+  test(
     'refreshes saved session, scopes writes and uses atomic time increments',
     () async {
       FlutterSecureStorage.setMockInitialValues({

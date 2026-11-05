@@ -189,9 +189,11 @@ class TwinkStore extends ChangeNotifier {
           .timeout(const Duration(seconds: 20));
       final next = _decode(response);
       if (uid == id && !demo) {
+        final changed =
+            jsonEncode(data) != jsonEncode(next) || syncError != null;
         data = next;
         syncError = null;
-        notifyListeners();
+        if (changed) notifyListeners();
       }
     } catch (e) {
       if (uid == id) {
@@ -367,18 +369,61 @@ class TwinkStore extends ChangeNotifier {
 
   Future<void> addTime(int seconds) async {
     final key = logicalDay();
+    final current = asMap(asMap(data?['stats'])['daily'])[key];
+    final path = 'stats/daily/$key${current is Map ? '/seconds' : ''}';
     if (demo) {
       await patch({
-        'stats/daily/$key':
-            number(asMap(asMap(data?['stats'])['daily'])[key]) + seconds,
+        path: number(current is Map ? current['seconds'] : current) + seconds,
       });
       return;
     }
     await patch({
-      'stats/daily/$key': {
+      path: {
         '.sv': {'increment': seconds},
       },
     });
+  }
+
+  Future<void> updateAccount({String? mail, String? password}) async {
+    if (demo) {
+      if (mail != null) email = mail;
+      notifyListeners();
+      return;
+    }
+    await _ensureToken();
+    final response = await _auth('update', {
+      'idToken': _token,
+      'email': ?mail,
+      'password': ?password,
+      'returnSecureToken': true,
+    });
+    email = response['email'] ?? mail ?? email;
+    _token = response['idToken'] ?? _token;
+    _refresh = response['refreshToken'] ?? _refresh;
+    _expiry = DateTime.now().add(
+      Duration(seconds: int.tryParse('${response['expiresIn']}') ?? 3600),
+    );
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> deleteAccount(String password) async {
+    if (demo) {
+      await logout();
+      return;
+    }
+    final mail = email;
+    if (mail == null || password.isEmpty) {
+      throw Exception('Введите текущий пароль');
+    }
+    // Reauthenticate before deleting any data, so an expired sign-in cannot
+    // remove the dictionary and then fail to remove the account.
+    await login(mail, password);
+    _decode(
+      await _client.delete(await _uri()).timeout(const Duration(seconds: 25)),
+    );
+    await _auth('delete', {'idToken': _token});
+    await logout();
   }
 
   @override

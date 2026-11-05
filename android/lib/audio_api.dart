@@ -226,6 +226,9 @@ class ElevenAudioClient {
       )
       .timeout(const Duration(seconds: 25));
   Future<Json> quota() async {
+    if (_key.isEmpty) {
+      throw const SpeechFailure('missing_key', 'Ключ ElevenLabs не настроен.');
+    }
     final response = await _http
         .get(
           Uri.parse('https://api.elevenlabs.io/v1/user/subscription'),

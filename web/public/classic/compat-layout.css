@@ -1,4 +1,13 @@
 /* Layout repairs over the unchanged original interface. */
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+}
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+}
 html {
     color-scheme: dark;
     scrollbar-color: var(--text-muted) var(--background);

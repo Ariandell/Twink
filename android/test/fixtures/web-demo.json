@@ -1,0 +1,208 @@
+{
+  "nickname": "Пользователь",
+  "words": {
+    "1": {
+      "id": "1",
+      "word": "der Augenblick",
+      "translation": "мгновение, момент",
+      "info1": "",
+      "info2": "Ein kurzer Moment.",
+      "ex1": "Genieße den Augenblick.",
+      "ex2": "Наслаждайтесь моментом.",
+      "folder": "Папка 1",
+      "frequency": 4,
+      "interval": 0,
+      "nextDate": 1793895971146,
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      },
+      "progress_groups": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    },
+    "2": {
+      "id": "2",
+      "word": "entdecken",
+      "translation": "обнаруживать, открывать",
+      "info1": "entdeckte, hat entdeckt",
+      "info2": "etwas Neues finden",
+      "ex1": "Wir entdecken jeden Tag etwas Neues.",
+      "ex2": "Мы каждый день открываем что-то новое.",
+      "folder": "Папка 1",
+      "frequency": 4,
+      "interval": 0,
+      "nextDate": 1793895971146,
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 3
+      },
+      "progress_groups": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    },
+    "3": {
+      "id": "3",
+      "word": "die Möglichkeit",
+      "translation": "возможность",
+      "info1": "",
+      "info2": "",
+      "ex1": "Es gibt viele Möglichkeiten.",
+      "ex2": "Существует много возможностей.",
+      "folder": "Папка 1",
+      "frequency": 4,
+      "interval": 0,
+      "nextDate": 1793895971146,
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 9
+      },
+      "progress_groups": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    },
+    "4": {
+      "id": "4",
+      "word": "sich erinnern",
+      "translation": "помнить, вспоминать",
+      "info1": "erinnerte sich, hat sich erinnert",
+      "info2": "sich an etwas erinnern",
+      "ex1": "Ich erinnere mich an diesen Tag.",
+      "ex2": "Я помню этот день.",
+      "folder": "Папка 1",
+      "frequency": 4,
+      "interval": 0,
+      "nextDate": 1793895971146,
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 1.5
+      },
+      "progress_groups": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    },
+    "5": {
+      "id": "5",
+      "word": "die Entscheidung, -en",
+      "translation": "решение",
+      "info1": "",
+      "info2": "eine Entscheidung treffen",
+      "ex1": "Das war eine gute Entscheidung.",
+      "ex2": "Это было хорошее решение.",
+      "folder": "Папка 2",
+      "frequency": 4,
+      "interval": 0,
+      "nextDate": 1793895971146,
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": true,
+        "is_ideal": true,
+        "excellentStreak": 10
+      },
+      "progress_groups": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    }
+  },
+  "idioms": {
+    "100000": {
+      "id": "100000",
+      "idiom": "Daumen drücken",
+      "translation": "держать кулаки",
+      "meaning": "Желать кому-то удачи",
+      "info": "Разговорное выражение",
+      "example": "Ich drücke dir die Daumen!",
+      "folder": "Идиомы",
+      "progress_global": {
+        "interval": 0,
+        "nextDate": 1793895971146,
+        "state": "new",
+        "isActive": false,
+        "is_ideal": false,
+        "excellentStreak": 0
+      }
+    }
+  },
+  "folderMeta": {
+    "Папка 1": {
+      "type": "words",
+      "createdAt": 1793809572146
+    },
+    "Папка 2": {
+      "type": "words",
+      "createdAt": 1793895972146
+    }
+  },
+  "settings": {
+    "study": {
+      "audio": false,
+      "audioWord": true,
+      "audioInfo1": true,
+      "audioInfo2": true,
+      "audioEx1": false,
+      "audioEx2": false,
+      "audioTranslation": true,
+      "examples": true,
+      "showWord": true,
+      "showInfo1": true,
+      "showInfo2": true,
+      "showEx1": true,
+      "showEx2": true,
+      "showProgress": true,
+      "showStatTotal": true,
+      "showStatDue": true,
+      "showStatToday": true,
+      "masterAudio": true,
+      "studyMode": "long"
+    }
+  },
+  "stats": {
+    "daily": {
+      "2026-11-05": 480,
+      "2026-11-04": 720
+    }
+  }
+}

@@ -4,7 +4,7 @@ typedef Json = Map<String, dynamic>;
 const dayMs = 86400000;
 const intervals = <String, List<double>>{
   'long': [0, 1 / 24, 1, 4, 7, 12, 21],
-  'intensive': [0, 1 / 24, 1, 2, 4, 9, 17],
+  'intensive': [0, 1 / 24, 1, 2, 4, 7, 17],
 };
 const ratings = [
   '',

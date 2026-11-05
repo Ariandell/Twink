@@ -1,7 +1,7 @@
 export const DAY = 86400000;
 export const INTERVALS = {
   long: [0, 1 / 24, 1, 4, 7, 12, 21],
-  intensive: [0, 1 / 24, 1, 2, 4, 9, 17],
+  intensive: [0, 1 / 24, 1, 2, 4, 7, 17],
 };
 export const RATINGS = [
   "",

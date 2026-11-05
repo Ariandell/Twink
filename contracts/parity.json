@@ -9,7 +9,7 @@
     {"previous":{"excellentStreak":7.5},"rating":6,"mode":"long","score":9,"days":21,"ideal":true},
     {"previous":{"excellentStreak":2},"rating":3,"mode":"intensive","score":0.5,"days":2,"ideal":false},
     {"previous":{"excellentStreak":6},"rating":4,"mode":"intensive","score":6,"days":4,"ideal":false},
-    {"previous":{"excellentStreak":0},"rating":5,"mode":"intensive","score":1.5,"days":9,"ideal":true},
+    {"previous":{"excellentStreak":0},"rating":5,"mode":"intensive","score":1.5,"days":7,"ideal":true},
     {"previous":{"excellentStreak":0},"rating":6,"mode":"intensive","score":3,"days":17,"ideal":true}
   ],
   "answers": [
