@@ -93,10 +93,7 @@ extension _ProfileView on _NativeHomeState {
         .fold<num>(0, (a, e) => a + e.value);
     final name = '${store.data?['nickname'] ?? 'Пользователь'}',
         avatar = avatarImage(store.data?['avatar']);
-    final fg = ink(context),
-        secondary = prefs.scheme == 'pure-black'
-            ? fg
-            : (schemes[prefs.scheme] ?? schemes['default']!)[1];
+    final fg = ink(context), secondary = originalSecondary(context);
     final badges = Wrap(
       spacing: 6,
       children: [
@@ -112,6 +109,8 @@ extension _ProfileView on _NativeHomeState {
           MaterialPageRoute<void>(builder: (_) => const _LevelsPage()),
         ),
         child: Surface(
+          glass: GlassKind.profile,
+          blur: 25,
           strong: true,
           radius: 16,
           padding: const EdgeInsets.fromLTRB(10, 15, 16, 15),
@@ -204,14 +203,10 @@ extension _ProfileView on _NativeHomeState {
                       ],
                     ),
                     gap(8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: LinearProgressIndicator(
-                        value: percent / 100,
-                        minHeight: 5,
-                        color: secondary,
-                        backgroundColor: fg.withValues(alpha: .07),
-                      ),
+                    OriginalProgress(
+                      value: percent / 100,
+                      color: secondary,
+                      glow: true,
                     ),
                   ],
                 ),
@@ -222,6 +217,8 @@ extension _ProfileView on _NativeHomeState {
       ),
       gap(12),
       Surface(
+        blur: 10,
+        grouped: true,
         child: Column(
           children: [
             _groupTitle('link', 'Streak'),
@@ -238,6 +235,8 @@ extension _ProfileView on _NativeHomeState {
       ),
       gap(16),
       Surface(
+        blur: 10,
+        grouped: true,
         child: Column(
           children: [
             _groupTitle('calendar', 'Total time'),
@@ -404,6 +403,7 @@ extension _ProfileView on _NativeHomeState {
         fg = ink(context),
         now = DateTime.parse(logicalDay());
     return Surface(
+      blur: 15,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(
         children: [
@@ -528,97 +528,41 @@ class _LevelsPage extends StatelessWidget {
   const _LevelsPage();
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
     body: SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Square(
-                  'back',
-                  onTap: () => Navigator.pop(context),
-                  border: false,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
                 ),
-                Expanded(
-                  child: label(
-                    'ИНСТРУКТАЖ',
-                    weight: FontWeight.w700,
-                    align: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(width: 40),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Surface(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      label(
-                        'Уровни владения',
-                        size: 20,
+                child: Row(
+                  children: [
+                    Square(
+                      'back',
+                      onTap: () => Navigator.pop(context),
+                      border: false,
+                    ),
+                    Expanded(
+                      child: label(
+                        'ИНСТРУКТАЖ',
                         weight: FontWeight.w700,
+                        align: TextAlign.center,
                       ),
-                      gap(),
-                      label(
-                        'Ваш уровень рассчитывается на основе количества «идеально» выученных слов.',
-                        color: muted(context),
-                      ),
-                      gap(),
-                      for (final row in [
-                        'A0 · 0+ слов',
-                        'A1 · 500+ слов',
-                        'A2 · 1000+ слов',
-                        'B1 · 2000+ слов',
-                        'B2 · 4000+ слов',
-                        'C1 · 8000+ слов',
-                        'C2 · 16000+ слов',
-                      ])
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 9),
-                          child: label(row),
-                        ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 40),
+                  ],
                 ),
-                gap(16),
-                Surface(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      label(
-                        'Обучение (Flashcards)',
-                        size: 20,
-                        weight: FontWeight.w700,
-                      ),
-                      gap(),
-                      label(
-                        'Нажмите на карточку, чтобы увидеть перевод. Оцените, насколько хорошо Вы помните слово. Интервал до следующего повторения зависит от выбранной оценки. До 9 баллов слово учится по карточкам; экзамен переводит его в активный запас.',
-                      ),
-                      gap(16),
-                      label('Серия дней', size: 18, weight: FontWeight.w700),
-                      gap(),
-                      label(
-                        'Для серии нужно заниматься не менее 15 минут в день. Учебный день учитывается со сдвигом на 6 часов.',
-                      ),
-                      gap(16),
-                      label('Экзамен', size: 18, weight: FontWeight.w700),
-                      gap(),
-                      label(
-                        'Введите немецкое слово, артикль и формы глагола. Правильная запись переводит слово в активный запас (10 баллов). Ошибка в артикле или порядке отнимает 1,5 балла; другая ошибка — 3 балла.',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const Expanded(child: _LearningGuide()),
+            ],
           ),
-        ],
+        ),
       ),
     ),
   );

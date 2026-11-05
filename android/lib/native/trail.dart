@@ -118,7 +118,6 @@ class _NativeTrailState extends State<NativeTrail>
     child: Stack(
       fit: StackFit.expand,
       children: [
-        widget.child,
         Positioned.fill(
           child: IgnorePointer(
             child: RepaintBoundary(
@@ -126,6 +125,7 @@ class _NativeTrailState extends State<NativeTrail>
             ),
           ),
         ),
+        widget.child,
       ],
     ),
   );

@@ -20,6 +20,39 @@ const entryFields = {
   ],
 };
 
+List<List<String>> dictionaryColumns(String kind) => [
+  ['id', 'ID'],
+  if (kind == 'words') ['active', 'Актив'],
+  ['ideal', 'Идеально'],
+  ...entryFields[kind]!,
+  ['interval', 'Интервал'],
+  ['nextDate', 'След. повтор'],
+  if (kind == 'words') ['frequency', 'Употребительность'],
+];
+String dictionaryValue(Json w, String key) {
+  final p = asMap(w['progress_global']);
+  return switch (key) {
+    'active' =>
+      p['isActive'] == true
+          ? 'Актив'
+          : number(p['excellentStreak']) > 0
+          ? '${p['excellentStreak']}'.replaceAll('.', ',')
+          : '—',
+    'ideal' => p['is_ideal'] == true ? 'Идеально' : '—',
+    'interval' => _intervalText(number(p['interval'])),
+    'nextDate' =>
+      number(p['interval']) > 0 && number(p['nextDate']) > 0
+          ? _nextDate(number(p['nextDate']).toInt())
+          : '—',
+    _ => '${w[key] ?? ''}',
+  };
+}
+
+String _nextDate(int timestamp) {
+  final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+  return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+}
+
 extension _DictionaryView on _NativeHomeState {
   List<Json> get filteredEntries {
     var list = entries.where((w) {
@@ -227,12 +260,12 @@ extension _DictionaryView on _NativeHomeState {
         else if (wide)
           SliverToBoxAdapter(
             child: SingleChildScrollView(
+              primary: false,
               scrollDirection: Axis.horizontal,
               child: DataTable(
                 columns: [
-                  const DataColumn(label: Text('ID')),
-                  for (final f in entryFields[kind]!)
-                    if (visibleColumns.contains(f[0]) || f[0] == 'idiom')
+                  for (final f in dictionaryColumns(kind))
+                    if (visibleColumns.contains(f[0]))
                       DataColumn(label: Text(f[1])),
                   const DataColumn(label: Text('Действия')),
                 ],
@@ -240,16 +273,14 @@ extension _DictionaryView on _NativeHomeState {
                     .map(
                       (w) => DataRow(
                         cells: [
-                          DataCell(Text('${w['id']}')),
-                          for (final f in entryFields[kind]!)
-                            if (visibleColumns.contains(f[0]) ||
-                                f[0] == 'idiom')
+                          for (final f in dictionaryColumns(kind))
+                            if (visibleColumns.contains(f[0]))
                               DataCell(
                                 ConstrainedBox(
                                   constraints: const BoxConstraints(
                                     maxWidth: 240,
                                   ),
-                                  child: Text('${w[f[0]] ?? ''}'),
+                                  child: Text(dictionaryValue(w, f[0])),
                                 ),
                               ),
                           DataCell(
@@ -305,7 +336,9 @@ extension _DictionaryView on _NativeHomeState {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: label(wordTitle(w), size: 15, weight: FontWeight.w900),
+                child: visibleColumns.contains(isIdiom ? 'idiom' : 'word')
+                    ? label(wordTitle(w), size: 15, weight: FontWeight.w900)
+                    : const SizedBox(),
               ),
               Square(
                 'edit',
@@ -337,7 +370,7 @@ extension _DictionaryView on _NativeHomeState {
               for (final field
                   in isIdiom ? ['meaning', 'info'] : ['info1', 'info2'])
                 if ('${w[field] ?? ''}'.isNotEmpty &&
-                    (visibleColumns.contains(field) || isIdiom))
+                    visibleColumns.contains(field))
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 5,
@@ -354,7 +387,7 @@ extension _DictionaryView on _NativeHomeState {
           ),
           for (final field in isIdiom ? ['example'] : ['ex1', 'ex2'])
             if ('${w[field] ?? ''}'.isNotEmpty &&
-                (visibleColumns.contains(field) || isIdiom))
+                visibleColumns.contains(field))
               Padding(
                 padding: const EdgeInsets.only(top: 7),
                 child: Container(
@@ -370,7 +403,7 @@ extension _DictionaryView on _NativeHomeState {
           gap(12),
           Row(
             children: [
-              if (visibleColumns.contains('progress')) ...[
+              if (visibleColumns.contains('interval')) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 7,
@@ -387,6 +420,8 @@ extension _DictionaryView on _NativeHomeState {
                     weight: FontWeight.w700,
                   ),
                 ),
+              ],
+              if (visibleColumns.contains('active')) ...[
                 const SizedBox(width: 6),
                 if (number(p['excellentStreak']) > 0)
                   label(
@@ -398,6 +433,11 @@ extension _DictionaryView on _NativeHomeState {
                   const SizedBox(width: 5),
                   Glyph('zap', size: 12, color: muted(context)),
                 ],
+              ],
+              if (visibleColumns.contains('ideal') &&
+                  p['is_ideal'] == true) ...[
+                const SizedBox(width: 6),
+                Glyph('star', size: 12, color: originalSecondary(context)),
               ],
               const SizedBox(width: 8),
               if (visibleColumns.contains('folder'))
@@ -411,13 +451,28 @@ extension _DictionaryView on _NativeHomeState {
                 )
               else
                 const Spacer(),
-              label(
-                '${w['id']}',
-                size: 10,
-                color: muted(context).withValues(alpha: .55),
-              ),
+              if (visibleColumns.contains('id'))
+                label(
+                  '${w['id']}',
+                  size: 10,
+                  color: muted(context).withValues(alpha: .55),
+                ),
             ],
           ),
+          if (visibleColumns.contains('nextDate') &&
+              number(p['interval']) > 0 &&
+              number(p['nextDate']) > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: label(
+                  _nextDate(number(p['nextDate']).toInt()),
+                  size: 10,
+                  color: muted(context),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -462,163 +517,191 @@ extension _DictionaryView on _NativeHomeState {
   }
 
   Future<void> _filters() async {
-    final fg = ink(context);
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Закрыть фильтры',
       barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 220),
+      transitionDuration: const Duration(milliseconds: 400),
       transitionBuilder: (c, a, b, child) => SlideTransition(
-        position: Tween(
-          begin: const Offset(1, 0),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+        position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(
+          CurvedAnimation(parent: a, curve: const Cubic(.16, 1, .3, 1)),
+        ),
         child: child,
       ),
       pageBuilder: (c, a, b) => Align(
         alignment: Alignment.centerRight,
         child: SizedBox(
-          width: math.min(MediaQuery.sizeOf(c).width * .85, 310),
+          width: math.min(MediaQuery.sizeOf(c).width * .8, 300),
+          height: double.infinity,
           child: Material(
-            color: Theme.of(c).scaffoldBackgroundColor,
-            child: SafeArea(
-              child: StatefulBuilder(
-                builder: (c, refresh) {
-                  void update(VoidCallback change) {
-                    this.update(change);
-                    refresh(() {});
-                  }
+            type: MaterialType.transparency,
+            child: NativeGlass(
+              kind: GlassKind.overlay,
+              blur: 25,
+              radius: 0,
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(c).scaffoldBackgroundColor.withValues(alpha: .95),
+                  Theme.of(c).scaffoldBackgroundColor.withValues(alpha: .95),
+                ],
+              ),
+              child: SafeArea(
+                child: StatefulBuilder(
+                  builder: (c, refresh) {
+                    void change(VoidCallback action, {bool columns = false}) {
+                      update(action);
+                      if (columns) {
+                        prefs.set('columns-$kind', visibleColumns.toList());
+                      }
+                      refresh(() {});
+                    }
 
-                  return ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 32),
-                    children: [
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Square(
-                          'close',
-                          onTap: () => Navigator.pop(c),
-                          border: false,
+                    Widget check(
+                      String text,
+                      bool value,
+                      ValueChanged<bool> action,
+                    ) => CheckboxListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                      title: label(text, size: 13),
+                      value: value,
+                      onChanged: (v) => action(v == true),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      activeColor: ink(c),
+                      checkColor: Theme.of(c).scaffoldBackgroundColor,
+                    );
+                    Widget menu(String text, List<Widget> choices) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _FilterMenu(text: text, choices: choices),
+                    );
+                    const sorts = {
+                      'oldest': 'Старые',
+                      'newest': 'Новые',
+                      'alphabet': 'По алфавиту',
+                      'interval': 'По интервалу',
+                      'date_asc': 'Дата повторения ↑',
+                      'date_desc': 'Дата повторения ↓',
+                    };
+                    return ListView(
+                      primary: false,
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 32),
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Square(
+                            'close',
+                            onTap: () => Navigator.pop(c),
+                            border: false,
+                          ),
                         ),
-                      ),
-                      gap(),
-                      label('Столбцы', weight: FontWeight.w700),
-                      gap(),
-                      Wrap(
-                        spacing: 5,
-                        runSpacing: 5,
-                        children: [
-                          for (final f in entryFields[kind]!)
-                            FilterChip(
-                              label: Text(f[1]),
-                              selected:
-                                  visibleColumns.contains(f[0]) ||
-                                  f[0] == 'idiom',
-                              onSelected: (v) => update(
+                        gap(18),
+                        menu('Столбцы', [
+                          for (final f in dictionaryColumns(kind))
+                            check(
+                              f[1],
+                              visibleColumns.contains(f[0]),
+                              (v) => change(
                                 () => v
                                     ? visibleColumns.add(f[0])
                                     : visibleColumns.remove(f[0]),
-                              ),
-                              selectedColor: fg.withValues(alpha: .15),
-                            ),
-                        ],
-                      ),
-                      gap(20),
-                      label('Интервалы', weight: FontWeight.w700),
-                      gap(),
-                      Wrap(
-                        spacing: 6,
-                        children: [
-                          for (final n in [
-                            0,
-                            1 / 24,
-                            1,
-                            2,
-                            4,
-                            7,
-                            9,
-                            12,
-                            17,
-                            21,
-                          ])
-                            FilterChip(
-                              label: Text(_intervalText(n)),
-                              selected: intervalFilters.contains(n),
-                              onSelected: (v) => update(
-                                () => v
-                                    ? intervalFilters.add(n)
-                                    : intervalFilters.remove(n),
+                                columns: true,
                               ),
                             ),
-                        ],
-                      ),
-                      gap(20),
-                      label('Баллы', weight: FontWeight.w700),
-                      Wrap(
-                        spacing: 6,
-                        children: [
-                          for (final n in [0, 1.5, 3, 4.5, 6, 7.5, 9, 10])
-                            FilterChip(
-                              label: Text('$n'),
-                              selected: scoreFilters.contains(n),
-                              onSelected: (v) => update(
-                                () => v
-                                    ? scoreFilters.add(n)
-                                    : scoreFilters.remove(n),
+                        ]),
+                        menu(
+                          intervalFilters.isEmpty
+                              ? 'Интервалы: Все'
+                              : 'Интервалы: ${intervalFilters.length}',
+                          [
+                            for (final n in [
+                              0,
+                              1 / 24,
+                              1,
+                              2,
+                              4,
+                              7,
+                              9,
+                              12,
+                              17,
+                              21,
+                            ])
+                              check(
+                                _intervalText(n),
+                                intervalFilters.contains(n),
+                                (v) => change(
+                                  () => v
+                                      ? intervalFilters.add(n)
+                                      : intervalFilters.remove(n),
+                                ),
+                              ),
+                          ],
+                        ),
+                        menu(
+                          scoreFilters.isEmpty
+                              ? 'Баллы'
+                              : 'Баллы: ${scoreFilters.length}',
+                          [
+                            for (final n in [0, 1.5, 3, 4.5, 6, 7.5, 9, 10])
+                              check(
+                                n.toString(),
+                                scoreFilters.contains(n),
+                                (v) => change(
+                                  () => v
+                                      ? scoreFilters.add(n)
+                                      : scoreFilters.remove(n),
+                                ),
+                              ),
+                          ],
+                        ),
+                        menu(sorts[sort] ?? 'Старые', [
+                          for (final option in sorts.entries)
+                            Tap(
+                              label: option.value,
+                              onTap: () => change(() => sort = option.key),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 18,
+                                      child: sort == option.key
+                                          ? const Glyph('check', size: 16)
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: label(option.value, size: 13),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                        ],
-                      ),
-                      gap(20),
-                      label('Сортировка', weight: FontWeight.w700),
-                      gap(),
-                      DropdownButtonFormField<String>(
-                        initialValue: sort,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'oldest',
-                            child: Text('Старые'),
+                        ]),
+                        Surface(
+                          radius: 12,
+                          padding: EdgeInsets.zero,
+                          child: check(
+                            'Повторки',
+                            duplicates,
+                            (v) => change(() => duplicates = v),
                           ),
-                          DropdownMenuItem(
-                            value: 'newest',
-                            child: Text('Новые'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'alphabet',
-                            child: Text('По алфавиту'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'interval',
-                            child: Text('По интервалу'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'date_asc',
-                            child: Text('Дата повторения ↑'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'date_desc',
-                            child: Text('Дата повторения ↓'),
-                          ),
-                        ],
-                        onChanged: (v) => update(() => sort = v ?? sort),
-                      ),
-                      gap(16),
-                      SwitchListTile.adaptive(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Повторки'),
-                        value: duplicates,
-                        activeThumbColor: fg,
-                        onChanged: (v) => update(() => duplicates = v),
-                      ),
-                      gap(),
-                      label(
-                        'Найдено: ${filteredEntries.length}',
-                        size: 12,
-                        color: muted(c),
-                      ),
-                    ],
-                  );
-                },
+                        ),
+                        gap(16),
+                        label(
+                          'Найдено: ${filteredEntries.length}',
+                          size: 12,
+                          color: muted(c),
+                          align: TextAlign.center,
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -846,6 +929,7 @@ class _EntryEditorState extends State<_EntryEditor> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
     body: SafeArea(
       child: Column(
         children: [
@@ -938,58 +1022,114 @@ class _FolderEditor extends StatefulWidget {
 }
 
 class _FolderEditorState extends State<_FolderEditor> {
+  late String kind = widget.kind;
   late final name = TextEditingController(text: widget.folder ?? '');
-  late final List<Json> draft =
-      (widget.kind == 'words' ? widget.store.words : widget.store.idioms)
-          .where((e) => e['folder'] == widget.folder && widget.folder != null)
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+  late final description = TextEditingController(
+    text:
+        asMap(
+              asMap(
+                widget.store.data?[kind == 'words'
+                    ? 'folderMeta'
+                    : 'idiomFolders'],
+              )[widget.folder],
+            )['description']
+            as String? ??
+        '',
+  );
+  late final List<Json> draft = widget.folder == null
+      ? [{}]
+      : (kind == 'words' ? widget.store.words : widget.store.idioms)
+            .where((e) => e['folder'] == widget.folder && widget.folder != null)
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
   final deleted = <String>[];
   bool busy = false;
+  void toggleKind() {
+    if (widget.folder != null) return;
+    setState(() {
+      final pairs = kind == 'words'
+          ? {
+              'word': 'idiom',
+              'info1': 'meaning',
+              'info2': 'info',
+              'ex1': 'example',
+            }
+          : {
+              'idiom': 'word',
+              'meaning': 'info1',
+              'info': 'info2',
+              'example': 'ex1',
+            };
+      for (final record in draft) {
+        for (final pair in pairs.entries) {
+          record[pair.value] = record[pair.key] ?? '';
+        }
+      }
+      kind = kind == 'words' ? 'idioms' : 'words';
+    });
+  }
+
   @override
   void dispose() {
     name.dispose();
+    description.dispose();
     super.dispose();
   }
 
   Future<void> save() async {
     if (busy) return;
-    final folder = name.text.trim();
-    if (folder.isEmpty || RegExp(r'[.#$\[\]/]').hasMatch(folder)) {
+    final folder = name.text.trim().isEmpty ? 'Новая папка' : name.text.trim();
+    if (RegExp(r'[.#$\[\]/]').hasMatch(folder)) {
       notify(context, r'Введите название папки без . # $ [ ] /');
       return;
     }
-    for (final record in draft) {
-      if (wordTitle(record).trim().isEmpty ||
-          '${record['translation'] ?? ''}'.trim().isEmpty) {
-        notify(context, 'Заполните слово и перевод в каждой карточке');
-        return;
-      }
+    final valid = draft
+        .where(
+          (record) =>
+              '${record[kind == 'words' ? 'word' : 'idiom'] ?? ''}'
+                  .trim()
+                  .isNotEmpty &&
+              '${record['translation'] ?? ''}'.trim().isNotEmpty,
+        )
+        .toList();
+    if (valid.isEmpty) {
+      notify(context, 'Добавьте хотя бы одно слово.');
+      return;
     }
     setState(() => busy = true);
     try {
-      final meta = widget.kind == 'words' ? 'folderMeta' : 'idiomFolders';
+      final meta = kind == 'words' ? 'folderMeta' : 'idiomFolders';
+      final oldMeta = asMap(
+        asMap(widget.store.data?[meta])[widget.folder ?? folder],
+      );
       final changes = <String, dynamic>{
         '$meta/$folder': {
+          ...oldMeta,
           'name': folder,
-          'type': 'manual',
-          'createdAt': DateTime.now().millisecondsSinceEpoch,
+          'description': description.text.trim(),
+          'type': oldMeta['type'] ?? 'manual',
+          'createdAt':
+              oldMeta['createdAt'] ?? DateTime.now().millisecondsSinceEpoch,
         },
-        for (final id in deleted) '${widget.kind}/$id': null,
+        for (final id in deleted) '$kind/$id': null,
       };
       if (widget.folder != null && widget.folder != folder) {
         changes['$meta/${widget.folder}'] = null;
       }
-      for (final record in draft.where((e) => e['id'] != null)) {
-        for (final f in entryFields[widget.kind]!) {
-          changes['${widget.kind}/${record['id']}/${f[0]}'] = f[0] == 'folder'
+      for (final record in valid.where((e) => e['id'] != null)) {
+        for (final f in entryFields[kind]!) {
+          changes['$kind/${record['id']}/${f[0]}'] = f[0] == 'folder'
               ? folder
               : record[f[0]] ?? '';
         }
       }
       await widget.store.patch(changes);
-      for (final record in draft.where((e) => e['id'] == null)) {
-        await widget.store.save(widget.kind, {...record, 'folder': folder});
+      for (final record in valid.where((e) => e['id'] == null)) {
+        await widget.store.save(kind, {
+          for (final field in entryFields[kind]!)
+            field[0]: record[field[0]] ?? '',
+          'folder': folder,
+        });
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -1011,12 +1151,10 @@ class _FolderEditorState extends State<_FolderEditor> {
     try {
       await widget.store.patch({
         for (final w
-            in (widget.kind == 'words'
-                    ? widget.store.words
-                    : widget.store.idioms)
+            in (kind == 'words' ? widget.store.words : widget.store.idioms)
                 .where((e) => e['folder'] == widget.folder))
-          '${widget.kind}/${w['id']}': null,
-        '${widget.kind == 'words' ? 'folderMeta' : 'idiomFolders'}/${widget.folder}':
+          '$kind/${w['id']}': null,
+        '${kind == 'words' ? 'folderMeta' : 'idiomFolders'}/${widget.folder}':
             null,
       });
       if (mounted) Navigator.pop(context);
@@ -1027,6 +1165,7 @@ class _FolderEditorState extends State<_FolderEditor> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
     body: SafeArea(
       child: Column(
         children: [
@@ -1034,32 +1173,60 @@ class _FolderEditorState extends State<_FolderEditor> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Square(
-                  'back',
-                  onTap: () => Navigator.pop(context),
-                  border: false,
-                ),
-                Expanded(
-                  child: label(
-                    widget.folder == null
-                        ? 'Создать папку'
-                        : 'Редактировать папку',
-                    weight: FontWeight.w700,
-                    align: TextAlign.center,
-                  ),
-                ),
-                if (widget.folder != null)
-                  Square(
-                    'trash',
-                    onTap: delete,
+                NativeGlass(
+                  kind: GlassKind.navigation,
+                  radius: 99,
+                  blur: 20,
+                  child: Square(
+                    'back',
+                    size: 48,
+                    onTap: () => Navigator.pop(context),
                     border: false,
-                    tooltip: 'Удалить папку',
+                    tooltip: 'Назад',
                   ),
-                Square(
-                  'check',
-                  onTap: busy ? null : save,
-                  border: false,
-                  tooltip: 'Сохранить',
+                ),
+                const Spacer(),
+                if (widget.folder != null)
+                  MenuAnchor(
+                    menuChildren: [
+                      MenuItemButton(
+                        onPressed: delete,
+                        child: Row(
+                          children: [
+                            const Glyph(
+                              'trash',
+                              size: 16,
+                              color: Color(0xffff4b4b),
+                            ),
+                            const SizedBox(width: 8),
+                            label(
+                              'Удалить папку',
+                              size: 14,
+                              color: const Color(0xffff4b4b),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    builder: (context, menu, child) => Square(
+                      'list',
+                      size: 40,
+                      border: false,
+                      tooltip: 'Действия с папкой',
+                      onTap: () => menu.isOpen ? menu.close() : menu.open(),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: activeNavigationDecoration(context),
+                  child: Square(
+                    'check',
+                    size: 48,
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    onTap: busy ? null : save,
+                    border: false,
+                    tooltip: 'Сохранить',
+                  ),
                 ),
               ],
             ),
@@ -1071,23 +1238,75 @@ class _FolderEditorState extends State<_FolderEditor> {
               itemCount: draft.length + 2,
               itemBuilder: (context, index) {
                 if (index == 0) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 24),
-                    child: TextField(
-                      controller: name,
-                      decoration: const InputDecoration(
-                        hintText: 'Название папки',
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Surface(
+                        radius: 16,
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: name,
+                              style: const TextStyle(
+                                fontSize: 17.6,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: 'Название папки',
+                              ),
+                            ),
+                            gap(12),
+                            TextField(
+                              controller: description,
+                              decoration: const InputDecoration(
+                                hintText: 'Описание (необязательно)',
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                      gap(12),
+                      if (widget.folder == null)
+                        Tap(
+                          label: 'Идиомы',
+                          onTap: toggleKind,
+                          child: Surface(
+                            radius: 12,
+                            background: kind == 'idioms'
+                                ? originalSecondary(context)
+                                      .withValues(alpha: .1)
+                                : null,
+                            borderColor: kind == 'idioms'
+                                ? originalSecondary(context)
+                                : null,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Glyph('chat', size: 16),
+                                const SizedBox(width: 8),
+                                label(
+                                  'Идиомы',
+                                  size: 13,
+                                  weight: FontWeight.w700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      gap(16),
+                    ],
                   );
                 }
                 if (index == draft.length + 1) {
                   return Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Pill(
-                      widget.kind == 'words'
-                          ? 'Добавить слово'
-                          : 'Добавить идиому',
+                      kind == 'words' ? 'Добавить слово' : 'Добавить идиому',
                       icon: 'plus',
                       onTap: () => setState(() => draft.add({})),
                     ),
@@ -1113,11 +1332,13 @@ class _FolderEditorState extends State<_FolderEditor> {
                             ),
                           ],
                         ),
-                        for (final f in entryFields[widget.kind]!.where(
+                        for (final f in entryFields[kind]!.where(
                           (f) => f[0] != 'folder',
                         ))
                           TextFormField(
-                            key: ValueKey('${identityHashCode(w)}-${f[0]}'),
+                            key: ValueKey(
+                              '${identityHashCode(w)}-$kind-${f[0]}',
+                            ),
                             initialValue: '${w[f[0]] ?? ''}',
                             onChanged: (v) => w[f[0]] = v,
                             maxLines: null,
@@ -1139,4 +1360,74 @@ class _FolderEditorState extends State<_FolderEditor> {
       ),
     ),
   );
+}
+
+class _FilterMenu extends StatefulWidget {
+  const _FilterMenu({required this.text, required this.choices});
+  final String text;
+  final List<Widget> choices;
+  @override
+  State<_FilterMenu> createState() => _FilterMenuState();
+}
+
+class _FilterMenuState extends State<_FilterMenu> {
+  final scroll = ScrollController();
+  @override
+  void dispose() {
+    scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final background = Theme.of(context).scaffoldBackgroundColor
+        .withValues(alpha: .94);
+    final options = NativeGlass(
+      kind: GlassKind.overlay,
+      blur: 24,
+      radius: 12,
+      gradient: LinearGradient(colors: [background, background]),
+      child: SizedBox(
+        width: math.min(260, MediaQuery.sizeOf(context).width - 40),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: math.min(400, MediaQuery.sizeOf(context).height * .65),
+          ),
+          child: SingleChildScrollView(
+            primary: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: widget.choices,
+            ),
+          ),
+        ),
+      ),
+    );
+    return PrimaryScrollController(
+      controller: scroll,
+      child: MenuAnchor(
+        style: const MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(Colors.transparent),
+          elevation: WidgetStatePropertyAll(0),
+          padding: WidgetStatePropertyAll(EdgeInsets.zero),
+        ),
+        menuChildren: [options],
+        builder: (context, controller, child) => Tap(
+          label: widget.text,
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          child: Surface(
+            radius: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(child: label(widget.text, size: 13)),
+                const Glyph('down', size: 15),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

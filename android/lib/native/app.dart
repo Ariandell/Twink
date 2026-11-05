@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,9 @@ part 'study.dart';
 part 'settings.dart';
 part 'trail.dart';
 part 'exam_help.dart';
+part 'glass.dart';
+part 'parity.dart';
+part 'learning_guide.dart';
 
 Uint8List _encodeExport((List<Json>, String) input) =>
     encodeSpreadsheet(input.$1, input.$2);
@@ -155,11 +159,27 @@ class _NativeTwinkAppState extends State<NativeTwinkApp> {
       return MaterialApp(
         title: 'German Vocabulary',
         debugShowCheckedModeBanner: false,
-        builder: (context, child) => NativeTrail(prefs: prefs, child: child!),
+        builder: (context, child) => ColoredBox(
+          color: light ? Colors.white : Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _Background(light: light, scheme: prefs.scheme),
+                  ),
+                ),
+              ),
+              NativeTrail(prefs: prefs, child: child!),
+            ],
+          ),
+        ),
         theme: ThemeData(
           useMaterial3: true,
           brightness: light ? Brightness.light : Brightness.dark,
           fontFamily: 'Roboto',
+          extensions: [TwinkPalette(prefs.scheme, light)],
           textTheme: (light ? ThemeData.light() : ThemeData.dark()).textTheme
               .apply(fontFamily: 'Roboto', bodyColor: fg, displayColor: fg),
           scaffoldBackgroundColor: light ? Colors.white : Colors.black,
@@ -210,6 +230,7 @@ class _NativeTwinkAppState extends State<NativeTwinkApp> {
           listenable: store,
           builder: (context, _) => store.loading
               ? const Scaffold(
+                  backgroundColor: Colors.transparent,
                   body: Center(
                     child: SizedBox(
                       width: 26,
@@ -304,6 +325,9 @@ class Surface extends StatelessWidget {
     this.tint,
     this.background,
     this.borderColor,
+    this.glass = GlassKind.panel,
+    this.blur = 0,
+    this.grouped = false,
   });
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -311,28 +335,31 @@ class Surface extends StatelessWidget {
   final bool strong;
   final Color? tint;
   final Color? background, borderColor;
+  final GlassKind glass;
+  final double blur;
+  final bool grouped;
   @override
   Widget build(BuildContext context) {
     final c = ink(context);
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(
-          color: borderColor ?? c.withValues(alpha: strong ? .2 : .12),
-        ),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            background ??
-                tint?.withValues(alpha: .15) ??
-                c.withValues(alpha: strong ? .05 : .03),
-            background ?? c.withValues(alpha: .01),
-          ],
-        ),
-      ),
-      child: child,
+    return NativeGlass(
+      radius: radius,
+      kind: glass,
+      blur: blur,
+      grouped: grouped,
+      borderColor: borderColor ?? c.withValues(alpha: strong ? .2 : .12),
+      gradient: glass == GlassKind.profile
+          ? null
+          : LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                background ??
+                    tint?.withValues(alpha: .15) ??
+                    c.withValues(alpha: strong ? .05 : .03),
+                background ?? c.withValues(alpha: .01),
+              ],
+            ),
+      child: Padding(padding: padding, child: child),
     );
   }
 }
@@ -346,12 +373,14 @@ class Square extends StatelessWidget {
     this.active = false,
     this.border = true,
     this.size = 40,
+    this.color,
   });
   final String icon;
   final VoidCallback? onTap;
   final String? tooltip;
   final bool active, border;
   final double size;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Tooltip(
     message: tooltip ?? '',
@@ -374,7 +403,7 @@ class Square extends StatelessWidget {
         child: Glyph(
           icon,
           size: 20,
-          color: active ? ink(context) : muted(context),
+          color: color ?? (active ? ink(context) : muted(context)),
         ),
       ),
     ),
@@ -513,23 +542,16 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
   }
 
   int tab = 0, settingsTab = 0;
-  String kind = 'words', query = '', sort = 'oldest';
-  bool folderGrid = false,
-      foldersNewest = true,
-      duplicates = false,
-      exporting = false;
+  String kind = 'words', query = '', sort = 'oldest', folderOrder = 'newest';
+  bool folderGrid = false, duplicates = false, exporting = false;
   final scoreFilters = <num>{}, intervalFilters = <num>{};
-  final visibleColumns = <String>{
-    'word',
-    'translation',
-    'info1',
-    'info2',
-    'ex1',
-    'ex2',
-    'folder',
-    'progress',
+  final visibleColumnSets = <String, Set<String>>{
+    for (final k in ['words', 'idioms'])
+      k: {for (final f in dictionaryColumns(k)) f[0]},
   };
+  Set<String> get visibleColumns => visibleColumnSets[kind]!;
   final searches = TextEditingController();
+  final folderSortAnchor = GlobalKey();
   late DateTime chartMonth = DateTime(
     DateTime.now().year,
     DateTime.now().month,
@@ -547,8 +569,7 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
       ...list.map((w) => '${w['folder'] ?? ''}').where((f) => f.isNotEmpty),
       ...meta.entries.map((e) => '${asMap(e.value)['name'] ?? e.key}'),
     }.toList();
-    names.sort();
-    if (foldersNewest) return names.reversed.toList();
+    names.sort((a, b) => compareFolders(a, b, list, folderOrder));
     return names;
   }
 
@@ -557,6 +578,12 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     tab = number(prefs.values['tab']).toInt().clamp(0, 4);
+    folderGrid = prefs.values['folderGrid'] == true;
+    folderOrder = '${prefs.values['folderOrder'] ?? 'newest'}';
+    for (final k in ['words', 'idioms']) {
+      final saved = prefs.values['columns-$k'];
+      if (saved is List) visibleColumnSets[k] = saved.map((e) => '$e').toSet();
+    }
   }
 
   @override
@@ -593,37 +620,35 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 768;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Stack(
           children: [
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: CustomPaint(painter: _Background(light: prefs.light)),
-              ),
-            ),
             Column(
               children: [
                 if (wide) _navigation(wide: true),
                 Expanded(
                   child: ListenableBuilder(
                     listenable: store,
-                    builder: (context, _) => Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: tab == 0
-                              ? 1200
-                              : tab == 1
-                              ? 900
-                              : 1100,
+                    builder: (context, _) => BackdropGroup(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: tab == 0
+                                ? 1200
+                                : tab == 1
+                                ? 900
+                                : 1100,
+                          ),
+                          child: switch (tab) {
+                            0 => _profile(),
+                            1 => _studyDashboard(),
+                            2 => _dictionary(),
+                            3 => _importPage(),
+                            _ => _settingsPage(),
+                          },
                         ),
-                        child: switch (tab) {
-                          0 => _profile(),
-                          1 => _studyDashboard(),
-                          2 => _dictionary(),
-                          3 => _importPage(),
-                          _ => _settingsPage(),
-                        },
                       ),
                     ),
                   ),
@@ -643,98 +668,24 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
     );
   }
 
-  Widget _navigation({bool wide = false}) {
-    final fg = ink(context),
-        names = ['Профиль', 'Учить', 'Словарь', 'Импорт', 'Настройки'],
-        icons = ['user', 'play', 'book', 'upload', 'settings'];
-    final order = [0, 2, 1, 3, 4];
-    final ordered = wide ? [0, 1, 2, 3, 4] : order;
-    return Center(
-      child: Container(
-        height: wide ? 70 : 60,
-        constraints: BoxConstraints(maxWidth: wide ? 700 : 450),
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xf016161b)
-              : const Color(0xf0e5e5e8),
-          border: Border.all(color: fg.withValues(alpha: .3)),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final width = c.maxWidth / 5;
-            return Stack(
-              children: [
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  left: ordered.indexOf(tab) * width,
-                  top: 0,
-                  bottom: 0,
-                  width: width,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: fg,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: ordered
-                      .map(
-                        (i) => Expanded(
-                          child: Tap(
-                            label: names[i],
-                            onTap: () => selectTab(i),
-                            child: Center(
-                              child: wide
-                                  ? label(
-                                      names[i],
-                                      size: 14,
-                                      weight: tab == i
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: tab == i
-                                          ? Theme.of(context)
-                                                .scaffoldBackgroundColor
-                                          : fg,
-                                    )
-                                  : Glyph(
-                                      icons[i],
-                                      size: 22,
-                                      color: tab == i
-                                          ? Theme.of(context)
-                                                .scaffoldBackgroundColor
-                                          : fg.withValues(alpha: .8),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
+  Widget _navigation({bool wide = false}) =>
+      GlassNavigation(selected: tab, onSelect: selectTab, wide: wide);
 
   Widget scrolling(
     List<Widget> children, {
     double top = 16,
     double bottom = 112,
   }) => ListView(
+    key: ValueKey('home-scroll-$tab'),
     padding: EdgeInsets.fromLTRB(12, top, 12, bottom),
     children: children,
   );
 }
 
 class _Background extends CustomPainter {
-  const _Background({this.light = false});
+  const _Background({this.light = false, this.scheme = 'pure-black'});
   final bool light;
+  final String scheme;
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
@@ -750,10 +701,80 @@ class _Background extends CustomPainter {
           ],
         ).createShader(rect),
     );
+    if (scheme != 'pure-black') {
+      final colors = schemes[scheme] ?? schemes['default']!;
+      void blob(
+        Offset center,
+        double rx,
+        double ry,
+        Color color,
+        double opacity,
+      ) {
+        canvas.save();
+        canvas.translate(center.dx, center.dy);
+        canvas.scale(rx, ry);
+        final shape = Rect.fromCircle(center: Offset.zero, radius: 1);
+        canvas.drawCircle(
+          Offset.zero,
+          1,
+          Paint()
+            ..shader = RadialGradient(
+              colors: [
+                color.withValues(alpha: opacity * .8),
+                color.withValues(alpha: opacity * .3),
+                color.withValues(alpha: 0),
+              ],
+              stops: const [0, .4, 1],
+            ).createShader(shape),
+        );
+        canvas.restore();
+      }
+
+      final mobile = size.width <= 768;
+      blob(
+        Offset(size.width * .1, size.height * .2),
+        mobile ? 480 : 880,
+        mobile ? 380 : 680,
+        colors.first,
+        light
+            ? .15
+            : scheme == 'midnight-gold'
+            ? .65
+            : .4,
+      );
+      blob(
+        Offset(size.width * .9, size.height * .7),
+        mobile ? 380 : 680,
+        mobile ? 480 : 880,
+        colors.last,
+        light
+            ? .15
+            : scheme == 'midnight-gold'
+            ? .2
+            : .32,
+      );
+    }
+    final random = math.Random(17), grain = <Offset>[];
+    for (var i = 0; i < 700; i++) {
+      grain.add(
+        Offset(
+          random.nextDouble() * size.width,
+          random.nextDouble() * size.height,
+        ),
+      );
+    }
+    canvas.drawPoints(
+      ui.PointMode.points,
+      grain,
+      Paint()
+        ..color = (light ? Colors.black : Colors.white).withValues(alpha: .025)
+        ..strokeWidth = .7,
+    );
   }
 
   @override
-  bool shouldRepaint(_Background old) => old.light != light;
+  bool shouldRepaint(_Background old) =>
+      old.light != light || old.scheme != scheme;
 }
 
 class _AuthPage extends StatefulWidget {
@@ -826,6 +847,7 @@ class _AuthPageState extends State<_AuthPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.transparent,
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(

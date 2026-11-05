@@ -132,7 +132,7 @@ extension _SettingsView on _NativeHomeState {
       children: [
         Expanded(
           child: Pill(
-            'Долгосрочный',
+            'Долгое изучение',
             primary: settings['studyMode'] == 'long',
             onTap: () => _changeMode('long'),
           ),
@@ -140,13 +140,15 @@ extension _SettingsView on _NativeHomeState {
         const SizedBox(width: 8),
         Expanded(
           child: Pill(
-            'Интенсивный',
+            'Интенсивное',
             primary: settings['studyMode'] == 'intensive',
             onTap: () => _changeMode('intensive'),
           ),
         ),
       ],
     ),
+    gap(16),
+    _ModeComparison(mode: settings['studyMode'].toString()),
     gap(32),
     for (final item in [
       ('words', false, 'Сбросить прогресс слов'),
@@ -161,6 +163,15 @@ extension _SettingsView on _NativeHomeState {
   ];
   Future<void> _changeMode(String mode) async {
     if (mode == settings['studyMode']) return;
+    if (!await nativeConfirm(
+      context,
+      mode == 'intensive'
+          ? 'Вы уверены, что хотите переключиться на ИНТЕНСИВНЫЙ режим? Все интервалы будут сокращены для более частого повторения.'
+          : 'Переключиться на стандартный режим? Все интервалы будут пересчитаны в сторону увеличения.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     final oldMode = '${settings['studyMode']}',
         oldIntervals = intervals[oldMode] ?? intervals['long']!,
         nextIntervals = intervals[mode]!,
@@ -173,7 +184,10 @@ extension _SettingsView on _NativeHomeState {
         for (final w in k == 'words' ? store.words : store.idioms) {
           final p = asMap(w['progress_global']);
           if (p.isEmpty ||
-              p['lastRating'] == null && number(p['interval']) == 0) {
+              p['lastRating'] == null &&
+                  number(p['interval']) == 0 &&
+                  p['is_ideal'] != true &&
+                  p['isActive'] != true) {
             continue;
           }
           var r = number(p['lastRating']).toInt();
@@ -188,7 +202,9 @@ extension _SettingsView on _NativeHomeState {
           }
           final reviewed = number(p['lastReviewed']) > 0
               ? number(p['lastReviewed']).toInt()
-              : number(p['nextDate']).toInt() -
+              : (number(p['nextDate']) > 0
+                        ? number(p['nextDate']).toInt()
+                        : now) -
                     (number(p['interval']) * dayMs).round();
           final nextDate =
               math.min(now, reviewed) + (nextIntervals[r] * dayMs).round();
@@ -345,12 +361,17 @@ extension _SettingsView on _NativeHomeState {
         'Интерактивные частицы, следующие за курсором.',
         color: muted(context),
       ),
-      SwitchListTile.adaptive(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Шлейф'),
-        activeThumbColor: fg,
-        value: prefs.values['trail'] != false,
-        onChanged: (v) => prefs.set('trail', v),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            Expanded(child: label('Шлейф')),
+            _NativeSwitch(
+              value: prefs.values['trail'] != false,
+              onChanged: (v) => prefs.set('trail', v),
+            ),
+          ],
+        ),
       ),
       Row(
         children: [
@@ -594,7 +615,7 @@ class _SessionSettingsState extends State<_SessionSettings> {
       text,
       size: 10,
       weight: FontWeight.w900,
-      color: muted(context).withValues(alpha: .65),
+      color: originalSecondary(context).withValues(alpha: .6),
       spacing: 1.6,
     ),
   );
@@ -727,11 +748,9 @@ class _SessionSettingsState extends State<_SessionSettings> {
   );
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) save();
-    },
+    canPop: !saving,
     child: Scaffold(
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -770,7 +789,7 @@ class _SessionSettingsState extends State<_SessionSettings> {
                   const SizedBox(width: 6),
                   Square(
                     'close',
-                    onTap: save,
+                    onTap: saving ? null : () => Navigator.pop(context),
                     border: false,
                     tooltip: 'Закрыть',
                   ),
@@ -839,8 +858,9 @@ class _SessionSettingsState extends State<_SessionSettings> {
                       ),
                     ],
                   ),
-                  if (draft['masterAudio'] == true)
-                    fields(const [
+                  _LiquidExpansion(
+                    open: draft['masterAudio'] == true,
+                    child: fields(const [
                       ('audioWord', 'Слово'),
                       ('audioInfo1', 'Формы глагола'),
                       ('audioInfo2', 'Дополнительно'),
@@ -848,6 +868,7 @@ class _SessionSettingsState extends State<_SessionSettings> {
                       ('audioEx2', 'Пример 2'),
                       ('audioTranslation', 'Перевод'),
                     ]),
+                  ),
                   section('ОФОРМЛЕНИЕ'),
                   toggle('genderColors', 'Подсветка слова по роду'),
                   toggle('genderCardBackground', 'Подсветка карточки по роду'),
@@ -856,26 +877,30 @@ class _SessionSettingsState extends State<_SessionSettings> {
                     'Редактировать элементы карточки',
                     expand: true,
                   ),
-                  if (draft['masterCard'] == true)
-                    fields(const [
+                  _LiquidExpansion(
+                    open: draft['masterCard'] == true,
+                    child: fields(const [
                       ('showWord', 'Слово'),
                       ('showInfo1', 'Формы глагола'),
                       ('showInfo2', 'Дополнительно'),
                       ('showEx1', 'Пример 1'),
                       ('showEx2', 'Пример 2'),
                     ]),
+                  ),
                   toggle(
                     'masterInterface',
                     'Редактировать интерфейс сессии',
                     expand: true,
                   ),
-                  if (draft['masterInterface'] == true)
-                    fields(const [
+                  _LiquidExpansion(
+                    open: draft['masterInterface'] == true,
+                    child: fields(const [
                       ('showProgress', 'Прогресс-бар'),
                       ('showStatTotal', 'Всего слов'),
                       ('showStatDue', 'К повторению'),
                       ('showStatToday', 'Пройдено сегодня'),
                     ]),
+                  ),
                   section('ДРУГОЕ'),
                   toggle('includeActive', 'Изучать активные слова'),
                 ],

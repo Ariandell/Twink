@@ -1,7 +1,7 @@
 name: twink_android
 description: "Twink: German vocabulary, spaced repetition and exams."
 publish_to: 'none'
-version: 0.3.0+5
+version: 0.3.1+6
 
 environment:
   sdk: ^3.13.2

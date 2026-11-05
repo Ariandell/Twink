@@ -4,7 +4,46 @@ extension _StudyView on _NativeHomeState {
   Widget _studyDashboard() {
     final words = store.words,
         idioms = store.idioms,
-        last = asMap(prefs.values['last_session']);
+        last = asMap(prefs.values['last_session']),
+        examDue = store.words.where((w) => eligible(w, exam: true)).length;
+    if (words.isEmpty && idioms.isEmpty) {
+      return scrolling([
+        gap(80),
+        Center(
+          child: Column(
+            children: [
+              Surface(
+                radius: 99,
+                padding: const EdgeInsets.all(16),
+                child: const Glyph('book', size: 32),
+              ),
+              gap(24),
+              label(
+                'Здесь пока ничего нет',
+                size: 20,
+                weight: FontWeight.w700,
+                align: TextAlign.center,
+              ),
+              gap(8),
+              label(
+                'Добавьте свое первое слово или идиому, чтобы начать обучение',
+                size: 16,
+                color: muted(context),
+                align: TextAlign.center,
+              ),
+              gap(24),
+              Pill(
+                'Добавить слово',
+                primary: true,
+                onTap: () => _editEntry('words'),
+              ),
+              gap(12),
+              Pill('Добавить идиому', onTap: () => _editEntry('idioms')),
+            ],
+          ),
+        ),
+      ]);
+    }
     return scrolling([
       label('Режимы обучения', size: 16, weight: FontWeight.w700),
       gap(20),
@@ -15,78 +54,44 @@ extension _StudyView on _NativeHomeState {
         words.where((w) => eligible(w)).length,
         () => _startStudy('words'),
       ),
-      gap(12),
-      _modeCard(
-        'Все идиомы',
-        'chat',
-        idioms.length,
-        idioms.where((w) => eligible(w)).length,
-        () => _startStudy('idioms'),
-      ),
-      gap(12),
-      _modeCard(
-        'Экзамен',
-        'check-circle',
-        null,
-        words.where((w) => eligible(w, exam: true)).length,
-        () => _startStudy('words', exam: true),
-      ),
-      if (last.isNotEmpty && last['folder'] != null) ...[
-        gap(16),
-        Surface(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: label(
-                      '${last['folder']}',
-                      size: 18,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                  Square(
-                    'edit',
-                    border: false,
-                    onTap: () => _folderEditor(
-                      '${last['kind']}',
-                      folder: '${last['folder']}',
-                    ),
-                  ),
-                ],
-              ),
-              gap(),
-              label(
-                'Последняя открытая папка',
-                size: 12,
-                color: muted(context),
-              ),
-              gap(),
-              Pill(
-                'Продолжить',
-                primary: true,
-                icon: 'play',
-                onTap: () =>
-                    _startStudy('${last['kind']}', folder: '${last['folder']}'),
-              ),
-            ],
-          ),
+      if (idioms.isNotEmpty) ...[
+        gap(12),
+        _modeCard(
+          'Все идиомы',
+          'chat',
+          idioms.length,
+          idioms.where((w) => eligible(w)).length,
+          () => _startStudy('idioms'),
         ),
       ],
+      if (examDue > 0) ...[
+        gap(12),
+        _modeCard(
+          'Экзамен',
+          'check-circle',
+          null,
+          examDue,
+          () => _startStudy('words', exam: true),
+        ),
+      ],
+      ..._lastOpened(last),
       gap(28),
       Row(
         children: [
           Expanded(child: label('Папки', size: 16, weight: FontWeight.w700)),
           Square(
             'sort',
-            onTap: () => update(() => foldersNewest = !foldersNewest),
+            key: folderSortAnchor,
+            onTap: _folderSort,
             border: false,
             tooltip: 'Сортировка',
           ),
           Square(
             folderGrid ? 'list' : 'grid',
-            onTap: () => update(() => folderGrid = !folderGrid),
+            onTap: () {
+              update(() => folderGrid = !folderGrid);
+              prefs.set('folderGrid', folderGrid);
+            },
             border: false,
             tooltip: 'Вид папок',
           ),
@@ -131,6 +136,88 @@ extension _StudyView on _NativeHomeState {
         _folderList('idioms'),
       ],
     ]);
+  }
+
+  List<Widget> _lastOpened(Json last) {
+    if (last.isEmpty || last['folder'] == null && last['kind'] != 'idioms') {
+      return [];
+    }
+    final k = last['kind'] == 'idioms' ? 'idioms' : 'words',
+        folder = last['folder'] as String?;
+    final items = (k == 'words' ? store.words : store.idioms)
+        .where((w) => folder == null || w['folder'] == folder)
+        .toList();
+    if (items.isEmpty) return [];
+    final counts = [
+      items.length,
+      items.where((w) => eligible(w)).length,
+      items
+          .where((w) => asMap(w['progress_global'])['is_ideal'] == true)
+          .length,
+    ];
+    return [
+      gap(16),
+      Tap(
+        label: 'Продолжить',
+        onTap: () => _startStudy(k, folder: folder),
+        onLongPress: folder == null
+            ? null
+            : () => _folderEditor(k, folder: folder),
+        child: Surface(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: ink(context).withValues(alpha: .08),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Glyph('play', size: 22),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: label(
+                  folder ?? 'Все идиомы',
+                  size: 14.72,
+                  weight: FontWeight.w700,
+                  lines: 1,
+                ),
+              ),
+              for (var i = 0; i < 3; i++)
+                Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Surface(
+                    radius: 10,
+                    background: ink(context).withValues(alpha: .04),
+                    borderColor: ink(context).withValues(alpha: .08),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        label(
+                          counts[i].toString(),
+                          size: 12,
+                          weight: FontWeight.w700,
+                        ),
+                        if (i == 2) ...[
+                          const SizedBox(width: 3),
+                          const Glyph('star', size: 10),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _modeCard(
@@ -188,6 +275,7 @@ extension _StudyView on _NativeHomeState {
   );
   Widget _folderList(String k) {
     final list = folders(k), source = k == 'words' ? store.words : store.idioms;
+    final compact = folderGrid && MediaQuery.sizeOf(context).width <= 768;
     Widget tile(String folder) {
       final items = source.where((w) => w['folder'] == folder).toList(),
           due = items.where((w) => eligible(w)).length,
@@ -199,9 +287,13 @@ extension _StudyView on _NativeHomeState {
         label: folder,
         onTap: () => _startStudy(k, folder: folder),
         child: Surface(
-          padding: const EdgeInsets.all(28),
-          background: due == 0 ? ink(context).withValues(alpha: .08) : null,
-          borderColor: due == 0 ? ink(context).withValues(alpha: .25) : null,
+          padding: EdgeInsets.all(compact ? 14.4 : 28),
+          background: due == 0
+              ? originalSecondary(context).withValues(alpha: .08)
+              : null,
+          borderColor: due == 0
+              ? originalSecondary(context).withValues(alpha: .25)
+              : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -210,7 +302,7 @@ extension _StudyView on _NativeHomeState {
                   Expanded(
                     child: label(
                       folder,
-                      size: 14.72,
+                      size: compact ? 12 : 14.72,
                       weight: FontWeight.w700,
                       lines: 1,
                     ),
@@ -218,33 +310,37 @@ extension _StudyView on _NativeHomeState {
                   Square(
                     'list',
                     border: false,
-                    size: 28,
+                    size: compact ? 22 : 28,
                     onTap: () => _folderEditor(k, folder: folder),
                     tooltip: 'Редактировать папку',
                   ),
                 ],
               ),
-              gap(4),
-              label(
-                k == 'idioms'
-                    ? 'Папка идиом'
-                    : RegExp(r'^Папка \d+$').hasMatch(folder)
-                    ? 'Создано автоматически'
-                    : asMap(asMap(store.data?['folderMeta'])[folder])['type'] ==
-                          'manual'
-                    ? 'Создано вручную'
-                    : 'Создано через импорт',
-                size: 10,
-                color: muted(context),
-              ),
-              gap(36),
+              if (!compact) ...[
+                gap(4),
+                label(
+                  k == 'idioms'
+                      ? 'Папка идиом'
+                      : RegExp(r'^Папка \d+$').hasMatch(folder)
+                      ? 'Создано автоматически'
+                      : asMap(
+                              asMap(store.data?['folderMeta'])[folder],
+                            )['type'] ==
+                            'manual'
+                      ? 'Создано вручную'
+                      : 'Создано через импорт',
+                  size: 10,
+                  color: muted(context),
+                ),
+              ],
+              gap(compact ? 6.4 : 36),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   for (final value in [
                     (items.length, 'ВСЕГО'),
                     (due, 'К ПОВТОРУ'),
-                    (ideal, 'ИДЕАЛЬНО'),
+                    (ideal, k == 'words' ? 'ИДЕАЛЬНО' : 'ПРОЙДЕНО'),
                   ])
                     Expanded(
                       child: Padding(
@@ -257,30 +353,40 @@ extension _StudyView on _NativeHomeState {
                           ),
                           background: ink(context).withValues(alpha: .04),
                           borderColor: ink(context).withValues(alpha: .08),
-                          child: _folderCount(value.$1, value.$2),
+                          child: compact
+                              ? Center(
+                                  child: label(
+                                    '${value.$1}',
+                                    size: 9.6,
+                                    weight: FontWeight.w800,
+                                  ),
+                                )
+                              : _folderCount(value.$1, value.$2),
                         ),
                       ),
                     ),
                 ],
               ),
-              gap(20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  label('Прогресс', size: 10, color: muted(context)),
-                  label(
-                    '${(p * 100).round()}%',
-                    size: 10,
-                    color: muted(context),
-                  ),
-                ],
-              ),
-              gap(7),
+              gap(compact ? 10 : 20),
+              if (!compact) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    label('Прогресс', size: 10, color: muted(context)),
+                    label(
+                      '${(p * 100).round()}%',
+                      size: 10,
+                      color: muted(context),
+                    ),
+                  ],
+                ),
+                gap(7),
+              ],
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: LinearProgressIndicator(
                   value: p,
-                  color: ink(context),
+                  color: originalSecondary(context),
                   backgroundColor: ink(context).withValues(alpha: .05),
                   minHeight: 4,
                 ),
@@ -301,11 +407,11 @@ extension _StudyView on _NativeHomeState {
     }
     return LayoutBuilder(
       builder: (context, c) => Wrap(
-        spacing: 10,
-        runSpacing: 10,
+        spacing: 8,
+        runSpacing: 8,
         children: [
           for (final f in list)
-            SizedBox(width: (c.maxWidth - 10) / 2, child: tile(f)),
+            SizedBox(width: (c.maxWidth - 8) / 2, child: tile(f)),
         ],
       ),
     );
@@ -318,34 +424,82 @@ extension _StudyView on _NativeHomeState {
       label(text, size: 8, color: muted(context)),
     ],
   );
-  Future<void> _createFolder() async {
-    final k = await showModalBottomSheet<String>(
+  Future<void> _folderSort() async {
+    final box =
+        folderSortAnchor.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final point = box.localToGlobal(Offset.zero),
+        size = MediaQuery.sizeOf(context);
+    final value = await showGeneralDialog<String>(
       context: context,
-      showDragHandle: true,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Pill(
-                'Папка слов',
-                icon: 'book',
-                onTap: () => Navigator.pop(c, 'words'),
+      barrierDismissible: true,
+      barrierLabel: 'Закрыть сортировку',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (c, a, b) => Stack(
+        children: [
+          Positioned(
+            right: 12,
+            top: math.min(point.dy + box.size.height + 8, size.height - 180),
+            width: 200,
+            child: Material(
+              type: MaterialType.transparency,
+              child: NativeGlass(
+                kind: GlassKind.overlay,
+                blur: 24,
+                radius: 16,
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(c).scaffoldBackgroundColor.withValues(alpha: .9),
+                    Theme.of(c).scaffoldBackgroundColor.withValues(alpha: .8),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final entry in [
+                        ('newest', 'Сначала новые'),
+                        ('oldest', 'Сначала старые'),
+                        ('alphabet', 'По алфавиту'),
+                      ])
+                        Tap(
+                          label: entry.$2,
+                          onTap: () => Navigator.pop(c, entry.$1),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Glyph(
+                                  folderOrder == entry.$1 ? 'check' : 'clock',
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 10),
+                                label(entry.$2, size: 13),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              gap(),
-              Pill(
-                'Папка идиом',
-                icon: 'book',
-                onTap: () => Navigator.pop(c, 'idioms'),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
-    if (k != null && mounted) await _folderEditor(k);
+    if (value != null && mounted) {
+      update(() => folderOrder = value);
+      prefs.set('folderOrder', value);
+    }
   }
+
+  Future<void> _createFolder() => _folderEditor('words');
 
   Future<void> _folderEditor(String k, {String? folder}) async {
     await Navigator.push<void>(
@@ -815,7 +969,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       onResult: (r) {
         if (!r.finalResult || !mounted) return;
         final text = r.recognizedWords.toLowerCase();
-        if (['переверни', 'открой', 'покажи'].any(text.contains)) {
+        if (['переверни', 'верни', 'открой', 'покажи'].any(text.contains)) {
           flip();
           return;
         }
@@ -922,6 +1076,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   Widget build(BuildContext context) {
     if (queue.isEmpty || index >= queue.length) {
       return const Scaffold(
+        backgroundColor: Colors.transparent,
         body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
@@ -931,19 +1086,13 @@ class _NativeStudyPageState extends State<NativeStudyPage>
         if (!didPop) exit();
       },
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         body: SafeArea(
           child: Listener(
             onPointerDown: (_) => activity = DateTime.now(),
             onPointerMove: (_) => activity = DateTime.now(),
             child: Stack(
               children: [
-                Positioned.fill(
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _Background(light: widget.prefs.light),
-                    ),
-                  ),
-                ),
                 Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
@@ -1019,9 +1168,9 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       final last = number(asMap(w['progress_global'])['lastReviewed']).toInt();
       return last > 0 && logicalDay(last) == today;
     }).length;
-    return Column(
+    return Stack(
       children: [
-        Expanded(
+        Positioned.fill(
           child: ListView(
             controller: cardsScroll,
             padding: const EdgeInsets.fromLTRB(12, 16, 12, 110),
@@ -1220,14 +1369,19 @@ class _NativeStudyPageState extends State<NativeStudyPage>
             ],
           ),
         ),
-        SessionNavigation(
-          store: widget.store,
-          prefs: widget.prefs,
-          onExit: () async {
-            await flush();
-            if (mounted) Navigator.pop(context);
-          },
-          listening: listening,
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: SessionNavigation(
+            store: widget.store,
+            prefs: widget.prefs,
+            onExit: () async {
+              await flush();
+              if (mounted) Navigator.pop(context);
+            },
+            listening: listening,
+          ),
         ),
       ],
     );
@@ -1241,17 +1395,9 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     return Color.lerp(colors[0], colors[1], (r - 1) / 5)!.withValues(alpha: .1);
   }
 
-  String _intervalLabel(int r) {
-    final d = (intervals['${settings['studyMode']}'] ?? intervals['long']!)[r];
-    return d < 1
-        ? '1 час'
-        : switch (d.toInt()) {
-            1 => '1 день',
-            2 => '2 дня',
-            4 => '4 дня',
-            _ => '${d.toInt()} дней',
-          };
-  }
+  String _intervalLabel(int r) => intervalCaption(
+    (intervals['${settings['studyMode']}'] ?? intervals['long']!)[r],
+  );
 
   Color? get gender {
     final title = wordTitle(word).toLowerCase();
@@ -1290,6 +1436,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       children: [
         Surface(
           radius: 24,
+          glass: GlassKind.card,
           strong: true,
           tint: settings['genderCardBackground'] == true ? gender : null,
           padding: const EdgeInsets.all(32),
@@ -1389,6 +1536,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
 
   Widget _back() => Surface(
     radius: 24,
+    glass: GlassKind.card,
     strong: true,
     tint: settings['genderCardBackground'] == true ? gender : null,
     padding: const EdgeInsets.all(32),
@@ -1468,15 +1616,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           weight: FontWeight.w700,
         ),
         gap(10),
-        label(
-          '${word['info1'] ?? ''}'.isNotEmpty
-              ? '________, Präsens, Präteritum, Partizip II'
-              : wordTitle(word).contains(',')
-              ? '________, (plural)'
-              : 'Введите ${wordTitle(word).split(RegExp(r'\s+')).length} слова/слов',
-          size: 14,
-          color: muted(context),
-        ),
+        label(examHint(word), size: 14, color: muted(context)),
         gap(24),
         TextField(
           controller: answer,
@@ -1635,16 +1775,27 @@ class _HighlightedExample extends StatelessWidget {
   final String text, title, forms;
   @override
   Widget build(BuildContext context) {
-    final roots = ('$title $forms')
-        .toLowerCase()
-        .split(RegExp(r'[^a-zäöüß]+'))
-        .where(
-          (w) =>
-              w.length > 3 && !['haben', 'sich', 'wird', 'werden'].contains(w),
-        )
-        .map((w) => w.substring(0, math.min(w.length, 5)))
-        .toSet();
-    final parts = text.split(RegExp(r'(?<=\s)|(?=\s)'));
+    final spans = <InlineSpan>[const TextSpan(text: '• ')];
+    var position = 0;
+    for (final range in originalExampleHighlights(text, title, forms)) {
+      if (range.$1 > position) {
+        spans.add(TextSpan(text: text.substring(position, range.$1)));
+      }
+      spans.add(
+        TextSpan(
+          text: text.substring(range.$1, range.$2),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontStyle: FontStyle.italic,
+            color: ink(context),
+          ),
+        ),
+      );
+      position = range.$2;
+    }
+    if (position < text.length) {
+      spans.add(TextSpan(text: text.substring(position)));
+    }
     return Text.rich(
       TextSpan(
         style: TextStyle(
@@ -1653,20 +1804,7 @@ class _HighlightedExample extends StatelessWidget {
           height: 1.4,
           color: muted(context),
         ),
-        children: [
-          const TextSpan(text: '• '),
-          for (final part in parts)
-            TextSpan(
-              text: part,
-              style: roots.any((r) => part.toLowerCase().startsWith(r))
-                  ? TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      color: ink(context),
-                    )
-                  : null,
-            ),
-        ],
+        children: spans,
       ),
     );
   }
@@ -1685,58 +1823,15 @@ class SessionNavigation extends StatelessWidget {
   final Future<void> Function() onExit;
   final bool listening;
   @override
-  Widget build(BuildContext context) {
-    final fg = ink(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 0, 28, 12),
-      child: Container(
-        height: 60,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? const Color(0xf016161b)
-              : const Color(0xf0e5e5e8),
-          border: Border.all(color: fg.withValues(alpha: .3)),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Row(
-          children: [
-            for (var i = 0; i < 5; i++)
-              Expanded(
-                child: Tap(
-                  label: const [
-                    'Профиль',
-                    'Словарь',
-                    'Учить',
-                    'Импорт',
-                    'Настройки',
-                  ][i],
-                  onTap: () {
-                    if (i != 2) {
-                      prefs.set('tab', const [0, 2, 1, 3, 4][i]);
-                      onExit();
-                    }
-                  },
-                  child: Container(
-                    alignment: Alignment.center,
-                    decoration: i == 2
-                        ? BoxDecoration(
-                            color: fg,
-                            borderRadius: BorderRadius.circular(99),
-                          )
-                        : null,
-                    child: Glyph(
-                      const ['user', 'book', 'play', 'upload', 'settings'][i],
-                      color: i == 2
-                          ? Theme.of(context).scaffoldBackgroundColor
-                          : fg.withValues(alpha: .8),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(28, 0, 28, 12),
+    child: GlassNavigation(
+      selected: 1,
+      onSelect: (i) {
+        if (i == 1) return;
+        prefs.set('tab', i);
+        onExit();
+      },
+    ),
+  );
 }

@@ -67,6 +67,7 @@ void main() {
 
   Future<void> screenshot(WidgetTester tester, String name) async {
     if (!const bool.fromEnvironment('CAPTURE_NATIVE')) return;
+    await tester.pumpAndSettle();
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(capture),
     );
@@ -173,7 +174,9 @@ void main() {
       find.byWidgetPredicate((w) => w is Square && w.icon == 'filter'),
     );
     await tester.pumpAndSettle();
-    final score = find.widgetWithText(FilterChip, '9');
+    await tester.tap(find.text('Баллы'));
+    await tester.pumpAndSettle();
+    final score = find.widgetWithText(CheckboxListTile, '9');
     await tester.ensureVisible(score);
     await tester.pumpAndSettle();
     await tester.tap(score);
@@ -202,11 +205,7 @@ void main() {
     final (store, _) = await launch(tester, tab: 1);
     await tester.tap(find.text('Создать папку'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(Pill, 'Папка слов'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, 'Новая папка');
-    await tester.tap(find.widgetWithText(Pill, 'Добавить слово'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).at(0), 'das Haus');
     await tester.enterText(find.byType(TextFormField).at(1), 'дом');
     await tester.tap(
@@ -313,7 +312,207 @@ void main() {
     await tapNav(tester, 'Профиль');
     expect(tester.takeException(), isNull);
   });
-  for (final size in [const Size(320, 568), const Size(390, 844)]) {
+  testWidgets('folder sort menu and view survive rebuilding the app', (
+    tester,
+  ) async {
+    final (store, prefs) = await launch(tester, tab: 1);
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.tooltip == 'Сортировка'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('По алфавиту'));
+    await tester.pumpAndSettle();
+    expect(prefs.values['folderOrder'], 'alphabet');
+    Finder folder(String name) =>
+        find.byWidgetPredicate((w) => w is Tap && w.label == name);
+    expect(
+      tester.getTopLeft(folder('Папка 1')).dy,
+      lessThan(tester.getTopLeft(folder('Папка 2')).dy),
+    );
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.tooltip == 'Вид папок'),
+    );
+    await tester.pumpAndSettle();
+    expect(prefs.values['folderGrid'], true);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: capture,
+        child: NativeTwinkApp(store: store, preferences: prefs),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final toggle = tester.widget<Square>(
+      find.byWidgetPredicate((w) => w is Square && w.tooltip == 'Вид папок'),
+    );
+    expect(toggle.icon, 'list');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('dictionary columns persist independently for words and idioms', (
+    tester,
+  ) async {
+    final (store, prefs) = await launch(tester, tab: 2);
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.icon == 'filter'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Столбцы'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'Перевод'));
+    await tester.pumpAndSettle();
+    expect(prefs.values['columns-words'], isNot(contains('translation')));
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.icon == 'close'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('мгновение, момент'), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == 'Идиомы'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('${store.idioms.first['translation']}'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: capture,
+        child: NativeTwinkApp(store: store, preferences: prefs),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('der Augenblick'), findsOneWidget);
+    expect(find.text('мгновение, момент'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('closing session settings cancels and checkmark saves', (
+    tester,
+  ) async {
+    final (store, _) = await launch(tester, tab: 1);
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+    );
+    await tester.pumpAndSettle();
+    Future<void> open() async {
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Square && w.icon == 'settings'),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> toggleGender() async {
+      final row = find
+          .ancestor(
+            of: find.text('Подсветка слова по роду'),
+            matching: find.byType(Row),
+          )
+          .first;
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(of: row, matching: find.byType(Tap)).last,
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await open();
+    await toggleGender();
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.icon == 'close'),
+    );
+    await tester.pumpAndSettle();
+    expect(store.settings['genderColors'], false);
+    await open();
+    await toggleGender();
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.icon == 'check'),
+    );
+    await tester.pumpAndSettle();
+    expect(store.settings['genderColors'], true);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('folder editor starts with one card and can create idioms', (
+    tester,
+  ) async {
+    final (store, _) = await launch(tester, tab: 1);
+    await tester.tap(find.text('Создать папку'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextFormField), findsNWidgets(6));
+    await tester.enterText(find.byType(TextField).first, 'Новые идиомы');
+    await tester.enterText(find.byType(TextField).at(1), 'Описание папки');
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == 'Идиомы'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(TextFormField), findsNWidgets(5));
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'den Nagel auf den Kopf treffen',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'попасть в точку');
+    await screenshot(tester, 'folder-editor');
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Square && w.icon == 'check'),
+    );
+    await tester.pumpAndSettle();
+    final saved = store.idioms.firstWhere((w) => w['folder'] == 'Новые идиомы');
+    expect(saved['idiom'], 'den Nagel auf den Kopf treffen');
+    expect(saved.containsKey('word'), false);
+    expect(
+      asMap(asMap(store.data!['idiomFolders'])['Новые идиомы'])['description'],
+      'Описание папки',
+    );
+    expect(store.words.length, 5);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('empty study dashboard provides original add actions', (
+    tester,
+  ) async {
+    final (store, _) = await launch(tester, tab: 1);
+    await store.patch({
+      'words': null,
+      'idioms': null,
+      'folderMeta': null,
+      'idiomFolders': null,
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Здесь пока ничего нет'), findsOneWidget);
+    expect(find.widgetWithText(Pill, 'Добавить слово'), findsOneWidget);
+    expect(find.widgetWithText(Pill, 'Добавить идиому'), findsOneWidget);
+    await screenshot(tester, 'empty-study');
+    await tester.tap(find.widgetWithText(Pill, 'Добавить слово'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNWidgets(7));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('original interval comparison and palettes fit a small phone', (
+    tester,
+  ) async {
+    final (_, prefs) = await launch(tester, size: const Size(320, 568), tab: 4);
+    await tester.tap(find.text('Прогресс'));
+    await tester.pumpAndSettle();
+    expect(find.text('Долгое'), findsOneWidget);
+    expect(find.text('Интенсив'), findsOneWidget);
+    expect(find.text('21 день'), findsOneWidget);
+    await screenshot(tester, 'progress-settings');
+    final appearance = find.text('Персонализация');
+    await tester.ensureVisible(appearance);
+    await tester.pumpAndSettle();
+    await tester.tap(appearance);
+    await tester.pumpAndSettle();
+    prefs.set('scheme', 'pink-yellow');
+    await tester.pumpAndSettle();
+    await tapNav(tester, 'Профиль');
+    await screenshot(tester, 'pink-glass-profile');
+    prefs.set('theme', 'light');
+    await tester.pumpAndSettle();
+    await screenshot(tester, 'light-glass-profile');
+    expect(tester.takeException(), isNull);
+  });
+  for (final size in [
+    const Size(320, 568),
+    const Size(390, 844),
+    const Size(568, 320),
+    const Size(1024, 768),
+  ]) {
     testWidgets('all tabs fit ${size.width}', (tester) async {
       await launch(tester, size: size);
       for (final name in [
