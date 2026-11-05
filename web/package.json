@@ -1,0 +1,29 @@
+{
+  "name": "twink-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/prepare-classic.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/prepare-classic.mjs && vite build && node scripts/offline-shell.mjs && node scripts/sync-android.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "firebase": "^12.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.7",
+    "uuid": "^11.1.1",
+    "minimatch": "^11.0.3"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "interface": "original Twink-main",
+  "files": {
+    "app.js": "ea374d65fd5818c25adb721c14cb6e9fa70a9e1138793f2a6fd2885dcabc1c30",
+    "auth.js": "a66d89b7908f591015f487c0e629773e5beb7434e8cfe37261254131930e7f54",
+    "clear-storage.js": "bf3291b457fe62381f55edc9f6706ff2ff804e1673cc03afea648380bdf059b4",
+    "compat-layout.css": "4d8a29f72fa0bc6f762d6cec8e11473f072694437e3c81c68a79f4e5b279a583",
+    "edit-word.css": "a9cd037c8274311d2dfb0e5a3fe738a6803c5d1a3b9e075baafd1bb338bda967",
+    "edit-word.js": "4dc2d60417159a08be5debc21ed3d28965a5749b5e0341f1353ecacb8ef3cabb",
+    "firebase-config.js": "c8bfeb1454f1990fbc0b406d2d230aae842367e6528d421ee17fe274b050c7fd",
+    "idioms-ui.js": "532b48e1f000b92075abcdd3f9125d38f2f88ddf2d8ba2fadc4330ba938845ca",
+    "idioms.css": "334189a69d6402617505a09bb1550585f2d284540f2e7d9277a5202399adeb4b",
+    "idioms.js": "027d11146133b5756d9c3d405fc4f33790219d1a662ac62483821fe8019382b9",
+    "levels.js": "97ce968a6ffb821c734703aed0f39ebc21db63341b83080332e8b28aa10b7062",
+    "particles.js": "893c193ef62db6bcebaa2dd4b8b76280a4f787f4aac7cda21f693d84b8e3f635",
+    "profile.css": "c790e8b698e428b35502186b2a772bb11498d30f2810634e43759d02a7c3ee85",
+    "profile.js": "d60d6b76e10dc4e59beb6dc4c507ecc0a1da1e916dc48863bf5458d13ce599a6",
+    "prufung.js": "c449298af816a2fa25c0701fd59b9082a29ec4be0c1a22d4108116b967245e44",
+    "settings.js": "35bad169fffadb70e306942362ba53e67a92c6fa9a33f9ef31824d0fb9aa121d",
+    "study.js": "42029d31a0a3baabf2345895fa6e13ce5353d0cab60c3384e4c9312c27ddbc1d",
+    "style-auth.css": "0f387cc5eb2849846ab3b0d18a7a1fc6754f26777f4ea4943ffea6235127940f",
+    "style-base.css": "02a95c127ac98827633ba91d0beadb00e613c091605458b82203b7972f636fb6",
+    "style-dashboard.css": "57d2d34b126c4782a97e09087fe3bb37bb1b9fb03932d216efefee1ea802abcd",
+    "style-editor.css": "dd28bdbe22c34a2b0a0ccd342f8c71e56478a76285955d82592a9be2012e9bd9",
+    "style-session.css": "a3dd1a0bcc320b7a6f3f8585cd91465a5f50051efdd9ff7257740e0bf9adc081",
+    "style.css": "d4c06b9de55fbbaeedaa3ba839c2c1553dbcb1152678fa9b47f6d9207ad274dd",
+    "sw.js": "67fcc01d5f39d2587fff0c129d90b1106e726052efcf69e0f98ef2a639964de6",
+    "voice-control.js": "88a57f0544ca2004bdc92016d95f2fd93198c643a710c78c6b6b5555a00f0fb9"
+  }
+}

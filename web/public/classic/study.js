@@ -1,0 +1,2712 @@
+// Study Module - Handles all study/learning functionality
+
+class StudyModule {
+    constructor() {
+        this.db = null;
+        this.allWordsCache = [];
+        this.foldersCache = [];
+        this.currentSession = null;
+        this.settings = {
+            audio: true,
+            audioWord: true,
+            audioInfo1: true,
+            audioInfo2: true,
+            audioEx1: false,
+            audioEx2: false,
+            audioTranslation: true,
+            examples: true,
+            showWord: true,
+            showInfo1: true,
+            showInfo2: true,
+            showEx1: true,
+            showEx2: true,
+            showProgress: true,
+            showStatTotal: true,
+            showStatDue: true,
+            showStatToday: true,
+            masterCard: false,
+            masterInterface: false,
+            masterAudio: true,
+            includeActive: false,
+            genderColors: false,
+            genderCardBackground: false,
+            studyMode: 'long',
+            selectAudioDe: 'elevenlabs_Qy4b2JlSGxY7I9M9Bqxb',
+            selectAudioRu: 'elevenlabs_3EuKHIEZbSzrHGNmdYsx'
+        };
+        this.intervalModes = {
+            long: {
+                1: 1 * 3600 * 1000,          // 1 hour
+                2: 1 * 24 * 3600 * 1000,     // 1 day
+                3: 4 * 24 * 3600 * 1000,     // 4 days
+                4: 7 * 24 * 3600 * 1000,     // 7 days
+                5: 12 * 24 * 3600 * 1000,    // 12 days
+                6: 21 * 24 * 3600 * 1000     // 21 days
+            },
+            intensive: {
+                1: 1 * 3600 * 1000,          // 1 hour
+                2: 1 * 24 * 3600 * 1000,     // 1 day
+                3: 2 * 24 * 3600 * 1000,     // 2 days
+                4: 4 * 24 * 3600 * 1000,     // 4 days
+                5: 9 * 24 * 3600 * 1000,     // 9 days
+                6: 17 * 24 * 3600 * 1000     // 17 days
+            }
+        };
+        this.intervalLabels = {
+            long: {
+                1: "1 час",
+                2: "1 день",
+                3: "4 дня",
+                4: "7 дней",
+                5: "12 дней",
+                6: "21 день"
+            },
+            intensive: {
+                1: "1 час",
+                2: "1 день",
+                3: "2 дня",
+                4: "4 дня",
+                5: "9 дней",
+                6: "17 дней"
+            }
+        };
+        this.tempSettings = null; // Temporary state for settings modal
+        this.folderSortOrder = localStorage.getItem('folderSortOrder') || 'newest';
+
+        // DOM Elements
+        this.viewStudy = document.getElementById('view-study');
+        this.viewGroupEdit = document.getElementById('view-group-edit');
+        this.viewStudySession = document.getElementById('view-study-session');
+        this.prufung = null; // Initialized in init() after DOM is ready
+
+        // Study UI
+        this.globalDueCountLbl = document.getElementById('global-due-count-lbl');
+        this.btnStartGlobal = document.getElementById('btn-start-global');
+        this.groupsList = document.getElementById('groups-list');
+        this.studyDashboardMain = document.getElementById('study-dashboard-main');
+        this.studyEmptyStateView = document.getElementById('study-empty-state-view');
+
+        // Group Editor
+        this.groupWordsList = document.getElementById('group-words-list');
+        this.btnBackToStudy = document.getElementById('btn-back-to-study');
+        this.btnSaveGroup = document.getElementById('btn-save-group');
+        this.btnDeleteFolder = document.getElementById('btn-delete-folder');
+        this.btnInlineDeleteFolder = document.getElementById('btn-inline-delete-folder');
+        this.inlineDeleteFolderContainer = document.getElementById('inline-delete-folder-container');
+        this.btnFolderOptionsMobile = document.getElementById('btn-folder-options-mobile');
+        this.folderOptionsPopup = document.getElementById('folder-options-popup');
+
+        // Session UI
+        this.btnExitSession = document.getElementById('btn-exit-session');
+        this.flashcard = document.getElementById('flashcard');
+        this.cardFolderName = document.getElementById('card-folder-name');
+        this.cardWord = document.getElementById('card-word');
+        this.cardInfo1 = document.getElementById('card-info1');
+        this.cardInfo2 = document.getElementById('card-info2');
+        this.cardTranslation = document.getElementById('card-translation');
+        this.cardMeaning = document.getElementById('card-meaning');
+        this.cardExamples = document.getElementById('card-examples');
+        this.ratingButtons = document.getElementById('rating-buttons');
+        this.btnFlashcardEdit = document.getElementById('btn-flashcard-edit');
+        this.cardDeletedOverlay = document.getElementById('card-deleted-overlay');
+        this.btnRestoreWord = document.getElementById('btn-restore-word');
+        this.btnSkipDeleted = document.getElementById('btn-skip-deleted');
+        this.btnQuickToggleAudio = document.getElementById('btn-quick-toggle-audio');
+        this.iconAudioOn = document.getElementById('icon-audio-on');
+        this.iconAudioOff = document.getElementById('icon-audio-off');
+
+        // Session Stats
+        this.totalWordsCount = document.getElementById('total-words-count');
+        this.dueWordsCount = document.getElementById('due-words-count');
+        this.learnedTodayCount = document.getElementById('learned-today-count');
+        this.totalWordsLabel = document.getElementById('total-words-label');
+        this.dueWordsLabel = document.getElementById('due-words-label');
+        this.sessionMasteredCount = document.getElementById('session-mastered-count');
+        this.progressContainer = document.querySelector('.session-progress-container');
+        this.progressFill = document.getElementById('progress-fill');
+
+        // Session Toggles & Stats Cards (Initialized in initToggles)
+        this.btnToggleAudio = null;
+        this.btnToggleWord = null;
+        this.btnToggleInfo1 = null;
+        this.btnToggleInfo2 = null;
+        this.btnToggleEx1 = null;
+        this.btnToggleEx2 = null;
+        this.btnToggleProgress = null;
+        this.btnToggleStatTotal = null;
+        this.btnToggleStatDue = null;
+        this.btnToggleStatToday = null;
+
+        this.statCardToday = null;
+        this.sessionGroupTitle = document.getElementById('session-group-title');
+
+        this.btnMasterCard = null;
+        this.btnMasterInterface = null;
+        this.sectionCardElements = null;
+        this.sectionInterfaceElements = null;
+
+        // Idiom Folder Toggle
+        this.folderIdiomModeToggle = document.getElementById('folder-idiom-mode-toggle');
+        this.idiomToggleBtn = document.getElementById('idiom-toggle-btn');
+        this.folderModeToggleContainer = document.getElementById('folder-mode-toggle-container');
+        this.isIdiomFolder = false;
+
+        // Exam module (PrufungModule) initialized in init()
+
+        // Time Tracking
+        this.timer = null;
+        this.lastActivity = Date.now();
+        this.idleLimit = 30 * 1000; // 30 seconds
+        this.isActiveSession = false;
+        this.userId = null;
+        this.pendingSeconds = 0;
+        this.todayTotalSeconds = 0; // Cumulative total for today
+        this.lastTickTimestamp = 0;
+    }
+
+    async init(dbInstance, wordsCache) {
+        this.db = dbInstance;
+        this.allWordsCache = wordsCache;
+
+        // Grab userID from DB instance if available or auth
+        if (firebase.auth().currentUser) {
+            this.userId = firebase.auth().currentUser.uid;
+        }
+
+        // Load persisted settings
+        const persisted = await this.db.getSettings();
+        if (persisted) {
+            this.settings = { ...this.settings, ...persisted };
+        }
+
+        // Initialize Exam Module
+        this.prufung = new PrufungModule(this);
+
+        this.initToggles();
+        this.initSessionControls();
+
+        // Setup Idle listeners
+        ['mousemove', 'keydown', 'click', 'touchstart'].forEach(evt => {
+            document.addEventListener(evt, () => this.lastActivity = Date.now());
+        });
+
+        // Load today's base time
+        if (this.userId) {
+            const dateKey = DateUtils.getLogicalDateKey();
+            const ref = this.db.db.ref(`users/${this.userId}/stats/daily/${dateKey}`);
+            ref.on('value', (snap) => {
+                const val = snap.val() || 0;
+                // Only update if we aren't currently tracking (to avoid jumps)
+                // or if the DB value is significantly ahead
+                if (!this.isActiveSession) {
+                    this.todayTotalSeconds = val;
+                }
+            });
+
+            // Subscribe to Folder Metadata (creation type)
+            const refMeta = this.db.db.ref(`users/${this.userId}/folderMeta`);
+            refMeta.on('value', (snap) => {
+                this.folderMetaCache = snap.val() || {};
+                // If study dashboard is visible, re-render to update labels
+                if (!this.viewStudy.classList.contains('hidden')) {
+                    this.renderFolders();
+                }
+            });
+        }
+
+        // Subscribe to Folders
+        this.db.subscribeToFolders((folders) => {
+            this.foldersCache = folders ? Object.values(folders) : [];
+            if (!this.viewStudy.classList.contains('hidden')) {
+                this.renderStudyDashboard();
+            }
+        });
+
+        // Initialize Folder Modal
+        this.initFolderCreation();
+
+        // --- Idiom Folder Mode Toggle Handler ---
+        if (this.idiomToggleBtn && this.folderIdiomModeToggle) {
+            this.idiomToggleBtn.onclick = () => {
+                this.folderIdiomModeToggle.checked = !this.folderIdiomModeToggle.checked;
+                this.isIdiomFolder = this.folderIdiomModeToggle.checked;
+                this.syncIdiomToggleUI();
+                this.renderFolderDraft();
+            };
+        }
+
+        // Ensure idiom cards are rendered
+        if (window.IdiomsUI && typeof window.IdiomsUI.renderStudyIdiomCards === 'function') {
+            window.IdiomsUI.renderStudyIdiomCards();
+        }
+
+        // Visibility Change listener to stop counting when backgrounded
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                this.stopTracking();
+            } else {
+                // Return to app: if we are in study session view OR exam view, restart tracking
+                if ((this.viewStudySession && !this.viewStudySession.classList.contains('hidden') && this.currentSession) ||
+                    (this.prufung && this.prufung.viewExam && !this.prufung.viewExam.classList.contains('hidden') && this.prufung.currentExamSession)) {
+                    this.startTracking();
+                }
+            }
+        });
+
+        this.syncTogglesUI();
+    }
+
+    startTracking() {
+        if (this.isActiveSession) return;
+        this.isActiveSession = true;
+        this.lastActivity = Date.now();
+        this.lastTickTimestamp = Date.now();
+
+        if (this.timer) clearInterval(this.timer);
+
+        this.timer = setInterval(() => {
+            if (!this.isActiveSession || !this.userId) return;
+
+            const now = Date.now();
+            const deltaMs = now - this.lastTickTimestamp;
+            this.lastTickTimestamp = now;
+
+            // Only count if user was active recently (prevent counting while locked/idle)
+            if (now - this.lastActivity < this.idleLimit) {
+                const deltaSec = deltaMs / 1000;
+                this.accumulateTime(deltaSec);
+                this.updateTimerUI();
+            }
+        }, 1000);
+
+        this.updateTimerUI();
+    }
+
+    async stopTracking() {
+        if (!this.isActiveSession) return;
+        this.isActiveSession = false;
+        if (this.timer) {
+            clearInterval(this.timer);
+            this.timer = null;
+        }
+        await this.flushTime();
+    }
+
+    async accumulateTime(seconds) {
+        if (isNaN(seconds)) return;
+        this.todayTotalSeconds += seconds;
+        this.pendingSeconds += seconds;
+
+        // Flush to DB roughly every 10 seconds to avoid data loss on crash/exit
+        if (this.pendingSeconds >= 10) {
+            await this.flushTime();
+        }
+    }
+
+    async flushTime() {
+        if (this.pendingSeconds <= 0) return;
+        if (!this.userId) return;
+
+        const toAdd = Math.floor(this.pendingSeconds);
+        // Keep the fractional part for the next flush
+        this.pendingSeconds -= toAdd;
+
+        if (toAdd <= 0) return;
+
+        const dateKey = DateUtils.getLogicalDateKey(); // YYYY-MM-DD
+        const ref = this.db.db.ref(`users/${this.userId}/stats/daily/${dateKey}`);
+
+        // Transaction to increment
+        try {
+            await ref.transaction((currentVal) => {
+                return (currentVal || 0) + toAdd;
+            });
+        } catch (e) {
+            console.error("Flush time error:", e);
+        }
+    }
+
+    updateTimerUI() {
+        const el = document.getElementById('debug-session-timer');
+        if (!el) return;
+        const total = Math.floor(this.todayTotalSeconds);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+
+        if (h > 0) {
+            el.textContent = `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        } else {
+            el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+    }
+
+    updateWordsCache(wordsCache) {
+        this.allWordsCache = wordsCache;
+    }
+
+    // --- TOGGLES ---
+    initToggles() {
+        this.btnToggleAudio = document.getElementById('btn-toggle-audio');
+        this.btnToggleWord = document.getElementById('btn-toggle-word');
+        this.btnToggleInfo1 = document.getElementById('btn-toggle-info1');
+        this.btnToggleInfo2 = document.getElementById('btn-toggle-info2');
+        this.btnToggleEx1 = document.getElementById('btn-toggle-ex1');
+        this.btnToggleEx2 = document.getElementById('btn-toggle-ex2');
+        this.btnToggleProgress = document.getElementById('btn-toggle-progress');
+        this.btnToggleStatTotal = document.getElementById('btn-toggle-stat-total');
+        this.btnToggleStatDue = document.getElementById('btn-toggle-stat-due');
+        this.btnToggleStatToday = document.getElementById('btn-toggle-stat-today');
+        this.btnToggleIncludeActive = document.getElementById('btn-toggle-include-active');
+        this.btnToggleVoice = document.getElementById('btn-toggle-voice');
+        this.btnToggleGenderColors = document.getElementById('btn-toggle-gender-colors');
+        this.btnToggleGenderCardBackground = document.getElementById('btn-toggle-gender-card-bg');
+
+        this.statCardTotal = document.getElementById('stat-card-total');
+        this.statCardDue = document.getElementById('stat-card-due');
+        this.statCardToday = document.getElementById('stat-card-today');
+
+        this.btnMasterCard = document.getElementById('btn-master-toggle-card');
+        this.btnMasterInterface = document.getElementById('btn-master-toggle-interface');
+        this.sectionCardElements = document.getElementById('section-card-elements');
+        this.sectionInterfaceElements = document.getElementById('section-interface-elements');
+
+        this.btnToggleAudioMaster = document.getElementById('btn-toggle-audio-master');
+        this.btnMasterAudio = document.getElementById('btn-master-toggle-audio');
+        this.sectionAudioElements = document.getElementById('section-audio-elements');
+        this.VOICES_DB = {
+            de: {
+                elevenlabs: [{ id: 'Qy4b2JlSGxY7I9M9Bqxb', label: 'Deutsch Female' }, { id: 'MJ0RnG71ty4LH3dvNfSd', label: 'Deutsch Male' }],
+                responsivevoice: [{ id: 'Deutsch Female', label: 'Deutsch Female' }, { id: 'Deutsch Male', label: 'Deutsch Male' }],
+                browser: [{ id: 'de_female', label: 'Deutsch Female' }, { id: 'de_male', label: 'Deutsch Male' }]
+            },
+            ru: {
+                elevenlabs: [{ id: '3EuKHIEZbSzrHGNmdYsx', label: 'Russ Male' }, { id: '7G0NvIkWRnU0Dqjgz13p', label: 'Russ Female' }],
+                responsivevoice: [{ id: 'Russian Female', label: 'Russian Female' }, { id: 'Ukrainian Female', label: 'Ukrainian Female' }],
+                browser: [{ id: 'ru_female', label: 'Russ Female' }, { id: 'ru_male', label: 'Russ Male' }]
+            }
+        };
+
+        this.providerDe = document.getElementById('audio-provider-de');
+        this.voiceDe = document.getElementById('audio-voice-de');
+        this.providerRu = document.getElementById('audio-provider-ru');
+        this.voiceRu = document.getElementById('audio-voice-ru');
+
+        const setupVoiceSelects = (lang, providerElem, voiceElem) => {
+            if (!providerElem || !voiceElem) return;
+            providerElem.onchange = (e) => {
+                const provider = e.target.value;
+                voiceElem.innerHTML = '';
+                this.VOICES_DB[lang][provider].forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = `${provider}_${v.id}`;
+                    opt.textContent = v.label;
+                    voiceElem.appendChild(opt);
+                });
+                const newVal = voiceElem.options[0].value;
+                const prop = lang === 'de' ? 'selectAudioDe' : 'selectAudioRu';
+                if (this.tempSettings) this.tempSettings[prop] = newVal;
+                else this.settings[prop] = newVal;
+            };
+
+            voiceElem.onchange = (e) => {
+                const prop = lang === 'de' ? 'selectAudioDe' : 'selectAudioRu';
+                if (this.tempSettings) this.tempSettings[prop] = e.target.value;
+                else this.settings[prop] = e.target.value;
+            };
+        };
+
+        setupVoiceSelects('de', this.providerDe, this.voiceDe);
+        setupVoiceSelects('ru', this.providerRu, this.voiceRu);
+        if (this.btnToggleAudioMaster) {
+            this.btnToggleAudioMaster.onclick = () => this.toggleSetting('audio');
+        }
+        if (this.btnMasterAudio) {
+            this.btnMasterAudio.onclick = () => this.toggleSetting('masterAudio');
+        }
+
+        if (this.btnQuickToggleAudio) {
+            this.btnQuickToggleAudio.onclick = () => {
+                this.settings.audio = !this.settings.audio;
+                if (!this.settings.audio) this.stopAudio();
+                this.updateElementsVisibility();
+                this.db.saveSettings(this.settings);
+            };
+        }
+
+        const setupToggle = (btn, settingsKey) => {
+            if (btn) {
+                btn.onclick = () => this.toggleSetting(settingsKey);
+            }
+        };
+
+        setupToggle(this.btnToggleAudioWord, 'audioWord');
+        setupToggle(this.btnToggleAudioInfo1, 'audioInfo1');
+        setupToggle(this.btnToggleAudioInfo2, 'audioInfo2');
+        setupToggle(this.btnToggleAudioEx1, 'audioEx1');
+        setupToggle(this.btnToggleAudioEx2, 'audioEx2');
+        setupToggle(this.btnToggleAudioTranslation, 'audioTranslation');
+
+        setupToggle(this.btnToggleWord, 'showWord');
+        setupToggle(this.btnToggleInfo1, 'showInfo1');
+        setupToggle(this.btnToggleInfo2, 'showInfo2');
+        setupToggle(this.btnToggleEx1, 'showEx1');
+        setupToggle(this.btnToggleEx2, 'showEx2');
+        setupToggle(this.btnToggleProgress, 'showProgress');
+        setupToggle(this.btnToggleStatTotal, 'showStatTotal');
+        setupToggle(this.btnToggleStatDue, 'showStatDue');
+        setupToggle(this.btnToggleStatToday, 'showStatToday');
+        setupToggle(this.btnToggleIncludeActive, 'includeActive');
+        setupToggle(this.btnToggleGenderColors, 'genderColors');
+        setupToggle(this.btnToggleGenderCardBackground, 'genderCardBackground');
+
+        setupToggle(this.btnMasterCard, 'masterCard');
+        setupToggle(this.btnMasterInterface, 'masterInterface');
+
+        // Handle Voice Toggle
+        if (this.btnToggleVoice && window.VoiceControl) {
+            this.btnToggleVoice.onclick = () => {
+                const isActive = window.VoiceControl.toggle();
+                this.btnToggleVoice.classList.toggle('active', isActive);
+            };
+            window.VoiceControl.btnToggle = this.btnToggleVoice;
+        }
+
+        // Handle Settings Menu
+        const btnSettings = document.getElementById('btn-session-settings');
+        if (btnSettings) {
+            btnSettings.onclick = (e) => {
+                e.stopPropagation();
+                this.openSettings();
+            };
+        }
+
+        const btnClose = document.getElementById('btn-close-settings');
+        if (btnClose) {
+            btnClose.onclick = () => this.closeSettings();
+        }
+        
+        // Removed manual btnSync logic        // Handle Main Mode Buttons (index and settings)
+        document.querySelectorAll('#main-mode-btn-long').forEach(btn => {
+            btn.onclick = () => this.selectMode('long');
+        });
+        document.querySelectorAll('#main-mode-btn-intensive').forEach(btn => {
+            btn.onclick = () => this.selectMode('intensive');
+        });
+
+        this.updateElementsVisibility();
+    }
+
+    async fetchElevenLabsQuota() {
+        const errSpan = document.getElementById('elevenlabs-sync-error');
+        if (errSpan) errSpan.style.display = 'none';
+        
+        try {
+            const apiKey = '';
+            const res = await fetch('https://api.elevenlabs.io/v1/user/subscription', {
+                headers: { 'xi-api-key': apiKey }
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.character_count !== undefined) {
+                    localStorage.setItem('elevenlabs_chars', data.character_count.toString());
+                    if (data.character_count < 10000) {
+                        localStorage.removeItem('elevenlabs_blocked');
+                    } else {
+                        localStorage.setItem('elevenlabs_blocked', 'true');
+                    }
+                    this.syncTogglesUI();
+                }
+            } else {
+                if (errSpan) errSpan.style.display = 'inline';
+            }
+        } catch (err) {
+            console.error("Sync Error:", err);
+            if (errSpan) errSpan.style.display = 'inline';
+        }
+    }
+
+    openSettings() {
+        const menuSettings = document.getElementById('session-settings-menu');
+        if (menuSettings) {
+            // Copy actual settings to temp
+            this.tempSettings = JSON.parse(JSON.stringify(this.settings));
+            this.syncTogglesUI();
+            this.fetchElevenLabsQuota();
+            menuSettings.classList.remove('hidden');
+        }
+    }
+
+    applySettings() {
+        if (this.tempSettings) {
+            // Finalize changes
+            const audioSettingsChanged = this.settings.audio !== this.tempSettings.audio ||
+                this.settings.audioWord !== this.tempSettings.audioWord ||
+                this.settings.audioInfo1 !== this.tempSettings.audioInfo1 ||
+                this.settings.audioInfo2 !== this.tempSettings.audioInfo2 ||
+                this.settings.audioEx1 !== this.tempSettings.audioEx1 ||
+                this.settings.audioEx2 !== this.tempSettings.audioEx2 ||
+                this.settings.audioTranslation !== this.tempSettings.audioTranslation ||
+                this.settings.selectAudioDe !== this.tempSettings.selectAudioDe ||
+                this.settings.selectAudioRu !== this.tempSettings.selectAudioRu;
+
+            const modeChanged = this.settings.studyMode !== this.tempSettings.studyMode;
+
+            this.settings = JSON.parse(JSON.stringify(this.tempSettings));
+            this.db.saveSettings(this.settings);
+
+            if (modeChanged) {
+                this.migrateStudyMode(this.settings.studyMode);
+            }
+
+            if (!this.settings.audio) this.stopAudio();
+
+            this.updateElementsVisibility();
+
+            // Re-render current card to apply gender colors, etc.
+            if (this.currentSession && this.currentSession.currentWord) {
+                // If audio wasn't changed, we might not want to restart it
+                // But for simplicity and to ensure new audio fields play, we refresh.
+                // However, we should stop current audio first.
+                this.stopAudio();
+                this.showNextCard(true);
+            }
+
+            this.tempSettings = null;
+        }
+        const menuSettings = document.getElementById('session-settings-menu');
+        if (menuSettings) menuSettings.classList.add('hidden');
+    }
+
+    async migrateStudyMode(newMode) {
+        console.log(`Migrating to study mode: ${newMode}`);
+        const intervals = this.intervalModes[newMode];
+        const updates = {};
+        const now = Date.now();
+
+        const oldMode = newMode === 'intensive' ? 'long' : 'intensive';
+        const oldIntervals = this.intervalModes[oldMode];
+
+        this.allWordsCache.forEach(word => {
+            const pg = word.progress_global;
+            if (!pg) return;
+
+            // Strictly skip only words that have NEVER been trained AND have NO interval/ideal flags
+            const isFresh = !pg.lastRating && (pg.interval === undefined || pg.interval === 0) && !pg.is_ideal && !pg.isActive;
+            if (isFresh) return;
+
+            let rating = pg.lastRating;
+
+            // If historical rating is missing (e.g. imported words), guess it from current interval
+            if (!rating || rating < 1 || rating > 6) {
+                let minDiff = Infinity;
+                rating = 1; // default fallback
+                for (let r = 1; r <= 6; r++) {
+                    const days = (oldIntervals[r] || 0) / (24 * 3600 * 1000);
+                    const diff = Math.abs(days - (pg.interval || 0));
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        rating = r;
+                    }
+                }
+                const dbPath = `users/${this.userId}/words/${word.id}`;
+                updates[`${dbPath}/progress_global/lastRating`] = rating;
+                pg.lastRating = rating; // Save it to cache to avoid guessing next time
+            }
+
+            // Safely compute last Reviewed date
+            let lastReviewedRaw = pg.lastReviewed;
+            if (!lastReviewedRaw || isNaN(lastReviewedRaw)) {
+                lastReviewedRaw = (pg.nextDate || now) - ((pg.interval || 0) * 86400000);
+            }
+            const lastReviewed = Math.min(now, Math.floor(lastReviewedRaw));
+
+            const newIntervalMs = intervals[rating] || 0;
+            const newIntervalDays = parseFloat((newIntervalMs / (24 * 3600 * 1000)).toFixed(4));
+            const newNextDate = lastReviewed + newIntervalMs;
+
+            // Dynamically recalculate is_ideal based on new interval
+            let newIsIdeal = pg.is_ideal;
+            if (pg.isActive) {
+                // Passed exam words stay ideal forever
+                newIsIdeal = true;
+            } else if (newNextDate <= now) {
+                // If the new date has passed, it ALWAYS loses ideal status (unless isActive)
+                newIsIdeal = false;
+            } else if (rating === 5 || rating === 6 || pg.is_ideal) {
+                // If it's in the future AND it was a good rating OR already ideal, it becomes/stays ideal
+                newIsIdeal = true;
+            } else {
+                newIsIdeal = false;
+            }
+
+            // Update word object in cache
+            pg.interval = newIntervalDays;
+            pg.nextDate = newNextDate;
+            pg.is_ideal = newIsIdeal;
+            word.interval = newIntervalDays;
+            word.nextDate = newNextDate;
+
+            // Prepare DB updates
+            const dbPath = `users/${this.userId}/words/${word.id}`;
+            updates[`${dbPath}/progress_global/interval`] = newIntervalDays;
+            updates[`${dbPath}/progress_global/nextDate`] = newNextDate;
+            updates[`${dbPath}/progress_global/is_ideal`] = newIsIdeal;
+            updates[`${dbPath}/interval`] = newIntervalDays;
+            updates[`${dbPath}/nextDate`] = newNextDate;
+        });
+
+        const numUpdates = Object.keys(updates).length;
+        if (numUpdates > 0) {
+            try {
+                // Break into chunks if too large (although 4000 is fine, 10000+ might stutter)
+                await this.db.db.ref().update(updates);
+                console.log(`Successfully migrated words to ${newMode} mode.`);
+                // Refresh dictionary and views
+                if (window.applyDictionaryFilters) window.applyDictionaryFilters();
+                this.renderStudyDashboard();
+            } catch (e) {
+                console.error("Migration failed", e);
+            }
+        }
+    }
+
+    closeSettings() {
+        this.tempSettings = null;
+        const menuSettings = document.getElementById('session-settings-menu');
+        if (menuSettings) menuSettings.classList.add('hidden');
+    }
+
+    toggleSetting(key) {
+        if (!this.tempSettings) return;
+        this.tempSettings[key] = !this.tempSettings[key];
+        this.syncTogglesUI();
+    }
+
+    async selectMode(mode) {
+        const s = this.tempSettings || this.settings;
+        if (s.studyMode === mode) return; // Already active
+
+        const msg = mode === 'intensive'
+            ? "Вы уверены, что хотите переключиться на ИНТЕНСИВНЫЙ режим? Все интервалы будут сокращены для более частого повторения."
+            : "Переключиться на стандартный режим? Все интервалы будут пересчитаны в сторону увеличения.";
+
+        if (!confirm(msg)) return;
+
+        if (this.tempSettings) {
+            this.tempSettings.studyMode = mode;
+        } else {
+            this.settings.studyMode = mode;
+            this.db.saveSettings(this.settings);
+            await this.migrateStudyMode(mode);
+        }
+        this.syncTogglesUI();
+    }
+
+    syncTogglesUI() {
+        const s = this.tempSettings || this.settings;
+
+        const updateBtn = (btn, key) => {
+            if (btn) btn.classList.toggle('active', s[key]);
+        };
+
+        const syncButtons = (selector, mode) => {
+            document.querySelectorAll(selector).forEach(btn => {
+                btn.classList.toggle('active', s.studyMode === mode);
+            });
+        };
+
+        syncButtons('#mode-btn-long', 'long');
+        syncButtons('#mode-btn-intensive', 'intensive');
+        syncButtons('#main-mode-btn-long', 'long');
+        syncButtons('#main-mode-btn-intensive', 'intensive');
+
+        // Update mode details in ALL mode-details containers
+        document.querySelectorAll('#mode-details').forEach(modeDetails => {
+            const isIntensive = s.studyMode === 'intensive';
+
+            const ratings = [
+                { id: 1, label: 'Не помню' },
+                { id: 2, label: 'С трудом' },
+                { id: 3, label: 'Частично' },
+                { id: 4, label: 'Почти' },
+                { id: 5, label: 'Помню' },
+                { id: 6, label: 'Отлично' }
+            ];
+
+            let tableRows = ratings.map(r => {
+                const longVal = this.intervalLabels.long[r.id];
+                const intVal = this.intervalLabels.intensive[r.id];
+                return `
+                    <tr>
+                        <td class="rating-label">${r.label}</td>
+                        <td class="val-long ${!isIntensive ? 'active-mode-val' : ''}" style="text-align: center; ${!isIntensive ? 'color: var(--text-main); font-weight: 600;' : 'opacity: 0.5;'}">${longVal}</td>
+                        <td class="val-intensive ${isIntensive ? 'active-mode-val' : ''}" style="text-align: center; ${isIntensive ? 'color: var(--primary); font-weight: 600;' : 'opacity: 0.5;'}">${intVal}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            modeDetails.innerHTML = `
+                <table class="mode-comparison">
+                    <thead>
+                        <tr>
+                            <th style="text-align: left;">Оценка</th>
+                            <th style="text-align: center;">Долгое</th>
+                            <th style="text-align: center;">Интенсив</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+                <p style="font-size: 0.75rem; color: var(--text-muted); font-style: italic; line-height: 1.4; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">
+                    ${isIntensive
+                    ? '🔥 <b>Интенсив:</b> Идеально для быстрого погружения. Интервалы короче, повторения чаще.'
+                    : '🌱 <b>Стандарт:</b> Сбалансированный путь для долгосрочной памяти. Оптимально для спокойного темпа.'
+                }
+                </p>
+            `;
+        });
+
+        // Update rating buttons labels
+        const labels = this.intervalLabels[s.studyMode || 'long'];
+        for (let i = 1; i <= 6; i++) {
+            const btn = document.querySelector(`.rate-btn-${i} span`);
+            if (btn) btn.textContent = labels[i];
+        }
+
+        updateBtn(this.btnToggleAudio, 'audio');
+        updateBtn(this.btnToggleAudioMaster, 'audio');
+
+        if (this.btnMasterAudio) {
+            this.btnMasterAudio.classList.toggle('active', s.masterAudio);
+        }
+        updateBtn(this.btnToggleAudioWord, 'audioWord');
+        updateBtn(this.btnToggleAudioInfo1, 'audioInfo1');
+        updateBtn(this.btnToggleAudioInfo2, 'audioInfo2');
+        updateBtn(this.btnToggleAudioEx1, 'audioEx1');
+        updateBtn(this.btnToggleAudioEx2, 'audioEx2');
+        updateBtn(this.btnToggleAudioTranslation, 'audioTranslation');
+
+        const syncVoiceSelects = (lang, providerElem, voiceElem) => {
+            if (!providerElem || !voiceElem) return;
+            const prop = lang === 'de' ? 'selectAudioDe' : 'selectAudioRu';
+            const val = s[prop] || (lang === 'de' ? 'elevenlabs_Qy4b2JlSGxY7I9M9Bqxb' : 'elevenlabs_3EuKHIEZbSzrHGNmdYsx');
+            const splitIndex = val.indexOf('_');
+            const providerStr = splitIndex > 0 ? val.substring(0, splitIndex) : 'elevenlabs';
+
+            providerElem.value = providerStr;
+            
+            voiceElem.innerHTML = '';
+            if (this.VOICES_DB && this.VOICES_DB[lang] && this.VOICES_DB[lang][providerStr]) {
+                this.VOICES_DB[lang][providerStr].forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = `${providerStr}_${v.id}`;
+                    opt.textContent = v.label;
+                    voiceElem.appendChild(opt);
+                });
+            }
+            voiceElem.value = val;
+
+            const isElevenBlocked = localStorage.getItem('elevenlabs_blocked') === 'true';
+            const elOption = providerElem.querySelector('option[value="elevenlabs"]');
+            if (elOption) {
+                elOption.disabled = isElevenBlocked;
+                if (isElevenBlocked) elOption.textContent = 'ElevenLabs (Лимит)';
+                else elOption.textContent = 'ElevenLabs';
+            }
+
+            if (isElevenBlocked && providerElem.value === 'elevenlabs') {
+                providerElem.value = 'responsivevoice';
+                providerElem.dispatchEvent(new Event('change'));
+            }
+        };
+
+        syncVoiceSelects('de', this.providerDe, this.voiceDe);
+        syncVoiceSelects('ru', this.providerRu, this.voiceRu);
+        
+        const countElem = document.getElementById('elevenlabs-char-count');
+        if (countElem) {
+            const count = parseInt(localStorage.getItem('elevenlabs_chars') || '0', 10);
+            countElem.textContent = count.toLocaleString();
+        }
+
+        updateBtn(this.btnToggleWord, 'showWord');
+        updateBtn(this.btnToggleInfo1, 'showInfo1');
+        updateBtn(this.btnToggleInfo2, 'showInfo2');
+        updateBtn(this.btnToggleEx1, 'showEx1');
+        updateBtn(this.btnToggleEx2, 'showEx2');
+        updateBtn(this.btnToggleProgress, 'showProgress');
+        updateBtn(this.btnToggleStatTotal, 'showStatTotal');
+        updateBtn(this.btnToggleStatDue, 'showStatDue');
+        updateBtn(this.btnToggleStatToday, 'showStatToday');
+        updateBtn(this.btnToggleIncludeActive, 'includeActive');
+        updateBtn(this.btnToggleGenderColors, 'genderColors');
+        updateBtn(this.btnToggleGenderCardBackground, 'genderCardBackground');
+
+        updateBtn(this.btnMasterCard, 'masterCard');
+        updateBtn(this.btnMasterInterface, 'masterInterface');
+
+        // Update Section Expansion
+        if (this.sectionCardElements) this.sectionCardElements.classList.toggle('expanded', s.masterCard);
+        if (this.sectionInterfaceElements) this.sectionInterfaceElements.classList.toggle('expanded', s.masterInterface);
+        if (this.sectionAudioElements) this.sectionAudioElements.classList.toggle('expanded', s.masterAudio);
+
+        // Voice Control
+        if (this.btnToggleVoice && window.VoiceControl) {
+            this.btnToggleVoice.classList.toggle('active', window.VoiceControl.isActive);
+        }
+    }
+
+    updateElementsVisibility() {
+        if (this.cardWord) this.cardWord.style.display = (this.settings.showWord && this.cardWord.textContent.trim()) ? 'block' : 'none';
+        if (this.cardInfo1) this.cardInfo1.style.display = (this.settings.showInfo1 && this.cardInfo1.textContent.trim()) ? 'block' : 'none';
+        if (this.cardInfo2) this.cardInfo2.style.display = (this.settings.showInfo2 && this.cardInfo2.textContent.trim()) ? 'block' : 'none';
+
+        if (this.cardExamples) {
+            const exs = this.cardExamples.querySelectorAll('p');
+            let hasVisibleEx = false;
+            exs.forEach((p, i) => {
+                const settingKey = `showEx${i + 1}`;
+                const isVisible = this.settings[settingKey] && p.textContent.replace('•', '').trim().length > 0;
+                p.style.display = isVisible ? 'block' : 'none';
+                if (isVisible) hasVisibleEx = true;
+            });
+            this.cardExamples.style.display = hasVisibleEx ? 'block' : 'none';
+        }
+
+        if (this.progressContainer) this.progressContainer.style.display = this.settings.showProgress ? 'block' : 'none';
+        if (this.statCardTotal) this.statCardTotal.style.display = this.settings.showStatTotal ? 'flex' : 'none';
+        if (this.statCardDue) this.statCardDue.style.display = this.settings.showStatDue ? 'flex' : 'none';
+        if (this.statCardToday) this.statCardToday.style.display = this.settings.showStatToday ? 'flex' : 'none';
+
+        if (this.sectionCardElements) this.sectionCardElements.classList.toggle('expanded', this.settings.masterCard);
+        if (this.sectionInterfaceElements) this.sectionInterfaceElements.classList.toggle('expanded', this.settings.masterInterface);
+        if (this.sectionAudioElements) this.sectionAudioElements.classList.toggle('expanded', this.settings.masterAudio);
+
+        // Update audio buttons
+        if (this.btnMasterAudio) this.btnMasterAudio.classList.toggle('active', this.settings.audio);
+        if (this.btnQuickToggleAudio) {
+            this.btnQuickToggleAudio.classList.toggle('active-toggle', this.settings.audio);
+            if (this.iconAudioOn) this.iconAudioOn.classList.toggle('hidden', !this.settings.audio);
+            if (this.iconAudioOff) this.iconAudioOff.classList.toggle('hidden', this.settings.audio);
+        }
+    }
+
+    // --- STATS LOGIC ---
+    getWordsForScope(mode, groupIndex) {
+        let source = [];
+        const isIdiomMode = mode === 'idiom_global' || mode === 'idiom_folder';
+
+        if (isIdiomMode) {
+            // Map idioms to the same format as startIdiomSession does
+            const idioms = (window.IdiomsUI && window.IdiomsUI.idiomsCache) ? window.IdiomsUI.idiomsCache : [];
+            source = idioms.map(i => ({
+                id: i.id,
+                word: i.idiom,
+                translation: i.translation,
+                info1: i.meaning || '',
+                info2: i.info || '',
+                ex1: i.example || '',
+                ex2: '',
+                folder: i.folder,
+                progress_global: i.progress_global || { interval: 0, nextDate: Date.now(), state: 'new', is_ideal: false, excellentStreak: 0 },
+                _isIdiom: true
+            }));
+        } else {
+            source = this.allWordsCache;
+        }
+
+        const sorted = [...source].sort((a, b) => {
+            const idA = String(a.id).replace('i_', '');
+            const idB = String(b.id).replace('i_', '');
+            return parseInt(idA) - parseInt(idB);
+        });
+
+        if (mode === 'global' || mode === 'idiom_global') {
+            if (this.settings.includeActive || isIdiomMode) {
+                return sorted;
+            }
+            return sorted.filter(w => !w.progress_global || !w.progress_global.isActive);
+        }
+        if ((mode === 'folder' || mode === 'idiom_folder') && groupIndex != null) {
+            // groupIndex here is the folder name
+            return sorted.filter(w => w.folder === groupIndex);
+        }
+        return [];
+    }
+
+    updateStatsUI(passedWords) {
+        const now = Date.now();
+        const startOfToday = (window.DateUtils && window.DateUtils.getLogicalDayStart) ? window.DateUtils.getLogicalDayStart() : now - 24*3600*1000;
+        
+        // Determine whether to use passed words (session queue) or full scope (folder total)
+        // For the "Total" counter, the user wants to see the whole folder size.
+        let scopeWords = passedWords;
+        if (this.currentSession && this.currentSession.mode !== 'custom') {
+            const fullScope = this.getWordsForScope(this.currentSession.mode, this.currentSession.groupIndex);
+            if (fullScope && fullScope.length > 0) scopeWords = fullScope;
+        }
+
+        let total = 0, due = 0, learnedToday = 0, mastered = 0;
+        const isIdiomSession = scopeWords.some(w => w._isIdiom);
+
+        scopeWords.forEach(w => {
+            total++;
+            const key = 'progress_global';
+            const prog = w[key] || {};
+
+            const isDue = (!prog.isActive && (!prog.nextDate || prog.nextDate <= now || prog.interval === 0));
+            const isWordReadyForExam = !w._isIdiom && (prog.excellentStreak || 0) >= 9;
+
+            if (isDue && !isWordReadyForExam) due++;
+            if (prog.lastReviewed && prog.lastReviewed >= startOfToday) learnedToday++;
+            if (prog.is_ideal) mastered++;
+        });
+
+        if (this.totalWordsCount) this.totalWordsCount.textContent = total;
+        if (this.dueWordsCount) this.dueWordsCount.textContent = due;
+        if (this.learnedTodayCount) this.learnedTodayCount.textContent = learnedToday;
+        if (this.sessionMasteredCount) this.sessionMasteredCount.textContent = mastered;
+
+        if (this.totalWordsLabel) {
+            this.totalWordsLabel.textContent = isIdiomSession ? 'Всего идиом' : 'Всего слов';
+        }
+
+        if (this.progressFill) {
+            const pct = total === 0 ? 0 : (mastered / total) * 100;
+            this.progressFill.style.width = `${pct}%`;
+        }
+    }
+
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+        return array;
+    }
+
+    initFolderCreation() {
+        // Initialize Sort Menu Listeners
+        const sortBtn = document.getElementById('folder-sort-toggle');
+        const sortMenu = document.getElementById('folder-sort-menu');
+
+        if (sortBtn && sortMenu) {
+            sortBtn.onclick = (e) => {
+                e.stopPropagation();
+                if (sortMenu.classList.contains('hidden')) {
+                    sortMenu.classList.remove('hidden');
+                } else {
+                    sortMenu.classList.add('hidden');
+                }
+            };
+
+            // Close when clicking outside
+            window.addEventListener('click', (e) => {
+                if (!sortMenu.classList.contains('hidden')) {
+                    if (!sortMenu.contains(e.target) && !sortBtn.contains(e.target)) {
+                        sortMenu.classList.add('hidden');
+                    }
+                }
+            });
+
+            // Set Initial Radio State based on saved preference
+            const radio = sortMenu.querySelector(`input[value="${this.folderSortOrder}"]`);
+            if (radio) radio.checked = true;
+        }
+
+        // Folder View Toggle (Grid/List)
+        const viewToggleBtn = document.getElementById('folder-view-toggle');
+        const foldersContainer = document.getElementById('folders-list');
+        const idiomFoldersContainer = document.getElementById('idiom-folders-list');
+        
+        if (viewToggleBtn && foldersContainer) {
+            viewToggleBtn.onclick = () => {
+                const isGrid = foldersContainer.classList.toggle('grid-mode');
+                if (idiomFoldersContainer) idiomFoldersContainer.classList.toggle('grid-mode', isGrid);
+                localStorage.setItem('folderViewMode', isGrid ? 'grid' : 'list');
+            };
+
+            // Restore preference
+            if (localStorage.getItem('folderViewMode') === 'grid') {
+                foldersContainer.classList.add('grid-mode');
+                if (idiomFoldersContainer) idiomFoldersContainer.classList.add('grid-mode');
+            }
+        }
+
+        // Listener for Manual Folder Creation to save metadata
+        document.addEventListener('click', (e) => {
+            if (e.target && (e.target.id === 'btn-create-folder-confirm' || e.target.id === 'btn-save-new-folder')) {
+                const input = document.getElementById('folder-create-name') || document.getElementById('new-folder-name');
+                if (input && input.value && this.userId) {
+                    const name = input.value.trim();
+                    this.db.db.ref(`users/${this.userId}/folderMeta/${name}`).update({
+                        type: 'manual',
+                        createdAt: Date.now()
+                    });
+                }
+            }
+        });
+    }
+
+    updateFolderSort(order) {
+        this.folderSortOrder = order;
+        localStorage.setItem('folderSortOrder', order);
+
+        // Update UI immediately
+        this.renderFolders();
+
+        // Close menu
+        const sortMenu = document.getElementById('folder-sort-menu');
+        if (sortMenu) sortMenu.classList.add('hidden');
+    }
+
+    openFolderCreator() {
+        if (window.switchView) window.switchView(this.viewGroupEdit);
+
+        this.isIdiomFolder = false;
+        if (this.folderIdiomModeToggle) this.folderIdiomModeToggle.checked = false;
+        this.syncIdiomToggleUI();
+        if (this.folderModeToggleContainer) this.folderModeToggleContainer.classList.remove('hidden');
+
+        // Reset Inputs
+        const nameInput = document.getElementById('group-name-input');
+        const descInput = document.getElementById('group-desc-input');
+        if (nameInput) nameInput.value = '';
+        if (descInput) descInput.value = '';
+
+        this.editingMode = 'new_folder';
+        this.folderDraftState = [];
+
+        // Start with one empty card
+        this.addDraftCard();
+        this.renderFolderDraft();
+
+        // Hide Delete Button
+        if (this.btnDeleteFolder) {
+            this.btnDeleteFolder.classList.add('hidden');
+        }
+        if (this.inlineDeleteFolderContainer) {
+            this.inlineDeleteFolderContainer.classList.add('hidden');
+        }
+
+        // Update Save Button Listener
+        if (this.btnSaveGroup) {
+            this.btnSaveGroup.onclick = () => this.saveDraftFolder();
+        }
+        // Update Back Button Listener
+        if (this.btnBackToStudy) {
+            this.btnBackToStudy.onclick = () => {
+                this.renderStudyDashboard();
+                if (window.switchView) window.switchView(this.viewStudy);
+            };
+        }
+    }
+
+    async deleteFolder(folderName) {
+        const wordsInFolder = this.allWordsCache.filter(w => w.folder === folderName);
+        if (!confirm(`Удалить папку «${folderName}» и все ${wordsInFolder.length} слов в ней?`)) return;
+
+        try {
+            // Delete all words in this folder from Firebase
+            const updates = {};
+            wordsInFolder.forEach(w => {
+                updates[`users/${this.userId}/words/${w.id}`] = null;
+            });
+
+            // Remove old folder structure if exists
+            updates[`users/${this.userId}/folders/${folderName}`] = null;
+
+            // Remove folder metadata if exists
+            if (this.folderMetaCache && this.folderMetaCache[folderName]) {
+                updates[`users/${this.userId}/folderMeta/${folderName}`] = null;
+                delete this.folderMetaCache[folderName];
+            }
+
+            // Apply all deletions in one batch
+            await this.db.db.ref().update(updates);
+
+            // Remove words from local cache
+            this.allWordsCache = this.allWordsCache.filter(w => w.folder !== folderName);
+
+            this.renderStudyDashboard();
+            if (window.switchView) window.switchView(this.viewStudy);
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка при удалении папки');
+        }
+    }
+
+    openFolderEditor(folderName) {
+        if (window.switchView) window.switchView(this.viewGroupEdit);
+
+        // Reset Inputs
+        const nameInput = document.getElementById('group-name-input');
+        const descInput = document.getElementById('group-desc-input');
+        if (nameInput) nameInput.value = folderName || '';
+        if (descInput) descInput.value = '';
+
+        this.editingMode = 'edit_folder';
+        this.currentFolderId = folderName; // Store original folder name
+        this.folderDraftState = [];
+
+        // Check if it's a word folder or an idiom folder
+        const folderWords = this.allWordsCache.filter(w => w.folder === folderName);
+        const folderIdioms = (window.IdiomsUI && window.IdiomsUI.idiomsCache) 
+            ? window.IdiomsUI.idiomsCache.filter(i => i.folder === folderName) 
+            : [];
+
+        if (folderIdioms.length > 0 && folderWords.length === 0) {
+            // It's an idiom folder
+            this.isIdiomFolder = true;
+            if (this.folderIdiomModeToggle) this.folderIdiomModeToggle.checked = true;
+            this.syncIdiomToggleUI();
+            if (this.folderModeToggleContainer) this.folderModeToggleContainer.classList.remove('hidden');
+            
+            folderIdioms.forEach(i => {
+                this.folderDraftState.push({
+                    id: i.id,
+                    word: i.idiom,
+                    translation: i.translation,
+                    info1: i.meaning,
+                    info2: i.info,
+                    ex1: i.example,
+                    ex2: '',
+                    progress_global: i.progress_global
+                });
+            });
+        } else {
+            // It's a word folder (or empty)
+            this.isIdiomFolder = false;
+            if (this.folderIdiomModeToggle) this.folderIdiomModeToggle.checked = false;
+            this.syncIdiomToggleUI();
+            // Hide toggle when editing word folders to prevent cross-db switching
+            if (this.folderModeToggleContainer) this.folderModeToggleContainer.classList.add('hidden');
+
+            folderWords.forEach(w => {
+                this.folderDraftState.push({
+                    id: w.id,
+                    word: w.word,
+                    translation: w.translation,
+                    info1: w.info1,
+                    info2: w.info2,
+                    ex1: w.ex1,
+                    ex2: w.ex2,
+                    progress_global: w.progress_global,
+                    progress_groups: w.progress_groups
+                });
+            });
+        }
+
+        // Ensure at least one empty card if empty
+        if (this.folderDraftState.length === 0) {
+            this.addDraftCard();
+        }
+
+        this.renderFolderDraft();
+
+        // Show and Bind Delete Button
+        if (this.btnDeleteFolder) {
+            this.btnDeleteFolder.classList.remove('hidden');
+            this.btnDeleteFolder.onclick = () => this.deleteFolder(folderName);
+        }
+        if (this.inlineDeleteFolderContainer && this.btnInlineDeleteFolder) {
+            this.inlineDeleteFolderContainer.classList.remove('hidden');
+            // Close popup explicitly if inline delete is triggered
+            this.btnInlineDeleteFolder.onclick = () => {
+                if (this.folderOptionsPopup) this.folderOptionsPopup.classList.add('hidden');
+                this.deleteFolder(folderName);
+            };
+        }
+
+        // Bind Mobile Options Toggle
+        if (this.btnFolderOptionsMobile && this.folderOptionsPopup) {
+            this.btnFolderOptionsMobile.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.folderOptionsPopup.classList.toggle('hidden');
+            };
+
+            // Setup document click listener to close popup (only setup once)
+            if (!this._mobileOptionsOutsideClickBound) {
+                document.addEventListener('click', (e) => {
+                    if (!this.folderOptionsPopup.classList.contains('hidden') &&
+                        !e.target.closest('#inline-delete-folder-container')) {
+                        this.folderOptionsPopup.classList.add('hidden');
+                    }
+                });
+                this._mobileOptionsOutsideClickBound = true;
+            }
+        }
+
+        // Update Save Button Listener
+        if (this.btnSaveGroup) {
+            this.btnSaveGroup.onclick = () => this.saveDraftFolder();
+        }
+
+        // Update Back To Study
+        if (this.btnBackToStudy) {
+            this.btnBackToStudy.onclick = () => {
+                this.renderStudyDashboard();
+                if (window.switchView) window.switchView(this.viewStudy);
+            };
+        }
+    }
+
+    addDraftCard() {
+        this.folderDraftState.push({
+            id: null,
+            word: '',
+            translation: '',
+            info1: '',
+            info2: '',
+            ex1: '',
+            ex2: ''
+        });
+        this.renderFolderDraft();
+    }
+
+    syncIdiomToggleUI() {
+        if (!this.idiomToggleBtn || !this.folderIdiomModeToggle) return;
+        if (this.folderIdiomModeToggle.checked) {
+            this.idiomToggleBtn.classList.add('active');
+        } else {
+            this.idiomToggleBtn.classList.remove('active');
+        }
+    }
+
+    renderFolderDraft() {
+        this.groupWordsList.innerHTML = '';
+        this.folderDraftState.forEach((w, index) => {
+            const div = document.createElement('div');
+            // Remove the default 'word-edit-card' since we style it fully inline or with edit-word classes
+            div.style.marginBottom = '0.5rem';
+            div.innerHTML = `
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 1.5rem; position: relative;">
+                    <!-- Minimalist Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 0.75rem;">
+                        <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">
+                            СЛОВО #${index + 1}
+                        </span>
+                        <button class="btn-icon btn-delete text-muted" title="Удалить" style="padding: 0.25rem;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="edit-word-group" style="margin-bottom: 1rem;">
+                        <input type="text" class="edit-word-input" 
+                            placeholder="${this.isIdiomFolder ? 'Идиома' : 'Немецкое слово'}" 
+                            value="${(w.word || '').replace(/"/g, '&quot;')}" data-field="word" data-idx="${index}">
+                    </div>
+                    <div class="edit-word-group" style="margin-bottom: 1rem;">
+                        <input type="text" class="edit-word-input" 
+                            placeholder="Перевод" 
+                            value="${(w.translation || '').replace(/"/g, '&quot;')}" data-field="translation" data-idx="${index}">
+                    </div>
+                    <div class="edit-word-group" style="margin-bottom: 1rem;">
+                        <input type="text" class="edit-word-input" 
+                            placeholder="${this.isIdiomFolder ? 'Смысловой перевод' : 'Формы глагола'}" 
+                            value="${(w.info1 || '').replace(/"/g, '&quot;')}" data-field="info1" data-idx="${index}">
+                    </div>
+                    <div class="edit-word-group" style="margin-bottom: 1rem;">
+                        <input type="text" class="edit-word-input" 
+                            placeholder="Дополнительно" 
+                            value="${(w.info2 || '').replace(/"/g, '&quot;')}" data-field="info2" data-idx="${index}">
+                    </div>
+                    <div class="edit-word-group" style="margin-bottom: 1rem;">
+                        <input type="text" class="edit-word-input" 
+                            placeholder="Пример" 
+                            value="${(w.ex1 || '').replace(/"/g, '&quot;')}" data-field="ex1" data-idx="${index}">
+                    </div>
+                    ${this.isIdiomFolder ? '' : `
+                    <div class="edit-word-group" style="margin-bottom: 0;">
+                        <input type="text" class="edit-word-input" placeholder="Пример 2" value="${(w.ex2 || '').replace(/"/g, '&quot;')}" data-field="ex2" data-idx="${index}">
+                    </div>
+                    `}
+                </div>
+            `;
+
+            // Bind inputs to local state
+            div.querySelectorAll('input').forEach(input => {
+                input.oninput = (e) => {
+                    const field = e.target.dataset.field;
+                    const idx = e.target.dataset.idx;
+                    // Check if exists
+                    if (this.folderDraftState[idx]) {
+                        this.folderDraftState[idx][field] = e.target.value;
+                    }
+                };
+            });
+
+            // Bind Delete (Remove from local state)
+            div.querySelector('.btn-delete').onclick = () => {
+                this.folderDraftState.splice(index, 1);
+                this.renderFolderDraft();
+            };
+
+            this.groupWordsList.appendChild(div);
+        });
+
+        // Add Plus Button at the bottom
+        const btnAdd = document.createElement('button');
+        btnAdd.className = 'btn-icon';
+        btnAdd.style.width = '100%';
+        btnAdd.style.marginTop = '1rem';
+        btnAdd.style.padding = '1rem';
+        btnAdd.style.border = '1px dashed var(--border)';
+        btnAdd.style.borderRadius = '12px';
+        btnAdd.style.color = 'var(--text-muted)';
+        btnAdd.style.justifyContent = 'center';
+        btnAdd.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`;
+
+        btnAdd.onclick = () => this.addDraftCard();
+        this.groupWordsList.appendChild(btnAdd);
+    }
+
+    async saveDraftFolder() {
+        const nameInput = document.getElementById('group-name-input');
+        const descInput = document.getElementById('group-desc-input');
+        const name = nameInput ? (nameInput.value.trim() || 'Новая папка') : 'Новая папка';
+
+        // Filter valid words
+        const validWords = this.folderDraftState.filter(w => w.word.trim() && w.translation.trim());
+
+        if (validWords.length === 0) {
+            alert("Добавьте хотя бы одно слово.");
+            return;
+        }
+
+        // Generate IDs and format for DB
+        const newWordIds = [];
+        const updates = {};
+
+        // Find max ID for words and idioms
+        let currentMaxWordId = 0;
+        this.allWordsCache.forEach(w => {
+            const id = parseInt(w.id);
+            if (!isNaN(id) && id < 100000 && id > currentMaxWordId) currentMaxWordId = id;
+        });
+
+        let currentMaxIdiomId = 100000;
+        if (window.IdiomsUI && window.IdiomsUI.idiomsCache) {
+            window.IdiomsUI.idiomsCache.forEach(i => {
+                const num = parseInt(String(i.id).replace('i_', ''));
+                if (!isNaN(num) && num > currentMaxIdiomId) currentMaxIdiomId = num;
+            });
+        }
+
+        validWords.forEach((w, index) => {
+            let id = w.id;
+            if (!id) {
+                // New Item
+                if (this.isIdiomFolder) {
+                    currentMaxIdiomId++;
+                    id = String(currentMaxIdiomId);
+                } else {
+                    currentMaxWordId++;
+                    id = String(currentMaxWordId);
+                }
+            }
+
+            newWordIds.push(id);
+
+            const pathPrefix = this.isIdiomFolder ? 'idioms' : 'words';
+            const itemPath = `users/${this.userId}/${pathPrefix}/${id}`;
+
+            if (this.isIdiomFolder) {
+                updates[itemPath] = {
+                    id: id,
+                    idiom: w.word,
+                    translation: w.translation,
+                    meaning: w.info1,
+                    info: w.info2,
+                    example: w.ex1,
+                    folder: name,
+                    progress_global: w.progress_global || { interval: 0, nextDate: Date.now(), state: "new", is_ideal: false }
+                };
+            } else {
+                updates[itemPath] = {
+                    id: id,
+                    word: w.word,
+                    translation: w.translation,
+                    info1: w.info1,
+                    info2: w.info2,
+                    ex1: w.ex1,
+                    ex2: w.ex2,
+                    folder: name,
+                    progress_global: w.progress_global || { interval: 0, nextDate: Date.now(), state: "new", is_ideal: false },
+                    progress_groups: w.progress_groups || { interval: 0, nextDate: Date.now(), state: "new" }
+                };
+            }
+        });
+
+        // If editing and folder name changed, update folder field for old words that weren't included
+        if (this.editingMode === 'edit_folder' && this.currentFolderId && this.currentFolderId !== name) {
+            // Update all words that had the old folder name but aren't in the new list
+            this.allWordsCache.forEach(w => {
+                if (w.folder === this.currentFolderId && !newWordIds.includes(w.id)) {
+                    // Word was removed from folder - optionally clear its folder or leave it
+                    // Option: Clear folder (will go to auto-folders)
+                    // updates[`users/${this.userId}/words/${w.id}/folder`] = null;
+
+                    // Option: Keep old folder name (recommended for history)
+                    // Do nothing
+                }
+            });
+        }
+
+        // Note: We no longer save the folder object in 'folders/' path.
+        // Folders are derived dynamically from the 'folder' field in words.
+
+        // Batch Update
+        await this.db.db.ref().update(updates);
+
+        // Reset and Exit
+        this.renderStudyDashboard();
+        if (window.switchView) window.switchView(this.viewStudy);
+    }
+
+    renderFolders() {
+        const container = document.getElementById('folders-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // Derive folders from allWordsCache
+        const foldersMap = {};
+        this.allWordsCache.forEach(w => {
+            // Only include words that have a folder assigned
+            if (w.folder) {
+                const folderName = w.folder;
+                if (!foldersMap[folderName]) {
+                    foldersMap[folderName] = {
+                        name: folderName,
+                        id: folderName,
+                        wordIds: [],
+                        minId: Infinity // Track min ID for creation order sort
+                    };
+                }
+                foldersMap[folderName].wordIds.push(w.id);
+
+                // Capture the lowest ID to use as "Creation Time" proxy
+                const wId = parseInt(w.id);
+                if (!isNaN(wId) && wId < foldersMap[folderName].minId) {
+                    foldersMap[folderName].minId = wId;
+                }
+            }
+        });
+
+        // Sort based on user preference
+        const folders = Object.values(foldersMap).sort((a, b) => {
+            const valA = a.minId === Infinity ? 0 : a.minId;
+            const valB = b.minId === Infinity ? 0 : b.minId;
+
+            if (this.folderSortOrder === 'newest') {
+                return valB - valA; // Descending ID
+            } else if (this.folderSortOrder === 'alphabet') {
+                return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+            } else {
+                // Default 'oldest'
+                return valA - valB; // Ascending ID
+            }
+        });
+
+        if (folders.length === 0) {
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">Нет созданных папок</div>';
+            return;
+        }
+
+        const now = Date.now();
+
+        folders.forEach(folder => {
+            // Get words objects
+            const folderWords = this.allWordsCache.filter(w => folder.wordIds.includes(w.id));
+            if (folderWords.length === 0) return;
+
+            // Due: Not Active AND Not Exam Candidate (streak < 9) AND Due Date <= Now
+            const due = folderWords.filter(w => !w.progress_global?.isActive && (w.progress_global?.excellentStreak || 0) < 9 && (!w.progress_global || w.progress_global.nextDate <= now));
+            // Mastered: is_ideal is the single source of truth
+            const learned = folderWords.filter(w => w.progress_global && w.progress_global.is_ideal);
+
+            const card = document.createElement('div');
+            card.className = due.length === 0 ? 'group-card completed' : 'group-card';
+            card.style.cursor = 'pointer';
+
+            card.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%; position: relative;">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                    <div style="flex: 1; min-width: 0; padding-right: 1rem;">
+                        <h3 style="margin: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${folder.name}">${folder.name}</h3>
+                         <div style="font-size: 0.8rem; color: var(--text-muted); opacity: 0.6; margin-top:0.2rem;">
+                            ${(/^Папка \d+$/.test(folder.name)) ? 'Создано автоматически' :
+                    (this.folderMetaCache && this.folderMetaCache[folder.name] && this.folderMetaCache[folder.name].type === 'manual') ? 'Создано вручную' :
+                        'Создано через импорт'}
+                        </div>
+                    </div>
+                    
+                    <button class="btn-icon btn-edit-folder" style="color: var(--text-muted); padding: 0.5rem;" title="Редактировать папку">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="8" y1="6" x2="21" y2="6"></line>
+                            <line x1="8" y1="12" x2="21" y2="12"></line>
+                            <line x1="8" y1="18" x2="21" y2="18"></line>
+                            <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                            <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                            <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Stats Grid -->
+                <div class="group-stats-grid">
+                    <div class="group-stat-item">
+                        <div class="group-stat-value" style="color: var(--text-main);">${folderWords.length}</div>
+                        <div class="group-stat-label">Всего</div>
+                    </div>
+                    <div class="group-stat-item">
+                        <div class="group-stat-value" style="color: ${due.length > 0 ? 'var(--accent-2)' : 'rgba(255,255,255,0.3)'};">${due.length}</div>
+                        <div class="group-stat-label">К повтору</div>
+                    </div>
+                    <div class="group-stat-item">
+                        <div class="group-stat-value" style="color: ${learned.length > 0 ? 'var(--secondary)' : 'rgba(255,255,255,0.3)'};">${learned.length}</div>
+                        <div class="group-stat-label" style="display:flex; justify-content:center; align-items:center; gap:4px;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--secondary); opacity: 0.8;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            Идеально
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.75rem; color: var(--text-muted);">Прогресс</span>
+                        <span style="font-size: 0.75rem; font-weight: 600; color: var(--secondary);">${Math.round(learned.length / folderWords.length * 100)}%</span>
+                    </div>
+                    <div style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                        <div style="height: 100%; width: ${learned.length / folderWords.length * 100}%; background: linear-gradient(90deg, var(--secondary), var(--accent-bright)); border-radius: 3px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+            card.onclick = () => this.startSession('folder', folder.id);
+
+            // Bind Edit
+            const btnEdit = card.querySelector('.btn-edit-folder');
+            if (btnEdit) {
+                btnEdit.onclick = (e) => {
+                    e.stopPropagation();
+                    this.openFolderEditor(folder.id);
+                };
+            }
+
+            container.appendChild(card);
+        });
+    }
+
+    // --- STUDY DASHBOARD ---
+    renderStudyDashboard() {
+        const hasWords = this.allWordsCache && this.allWordsCache.length > 0;
+        const hasIdioms = window.IdiomsUI && window.IdiomsUI.idiomsCache && window.IdiomsUI.idiomsCache.length > 0;
+
+        if (!hasWords && !hasIdioms) {
+            if (this.studyDashboardMain) this.studyDashboardMain.classList.add('hidden');
+            if (this.studyEmptyStateView) {
+                this.studyEmptyStateView.classList.remove('hidden');
+                this.studyEmptyStateView.innerHTML = `
+        <div class="empty-state-card">
+            <div class="empty-state-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            </div>
+            <div>
+                <h3 style="color: var(--text-main); margin-bottom: 0.5rem; font-size: 1.25rem; font-weight: 700;">Здесь пока ничего нет</h3>
+                <p style="color: var(--text-muted); font-size: 1rem; margin-bottom: 1.5rem;">Добавьте свое первое слово или идиому, чтобы начать обучение</p>
+            </div>
+            <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                <button onclick="window.openEditModal()" class="btn-primary" style="width: auto; padding: 0.8rem 2.5rem; font-weight: 600;">Добавить слово</button>
+                <button onclick="window.IdiomsUI.openIdiomEditModal()" class="btn-secondary" style="width: auto; padding: 0.8rem 2.5rem; font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid var(--border);">Добавить идиому</button>
+            </div>
+        </div>
+    `;
+            }
+            return;
+        }
+
+        if (this.studyDashboardMain) this.studyDashboardMain.classList.remove('hidden');
+        if (this.studyEmptyStateView) this.studyEmptyStateView.classList.add('hidden');
+
+        const now = Date.now();
+        const sortedWords = [...this.allWordsCache].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+
+        const globalDue = sortedWords.filter(w => !w.progress_global?.isActive && (w.progress_global?.excellentStreak || 0) < 9 && (!w.progress_global || w.progress_global.nextDate <= now));
+        if (this.globalDueCountLbl) this.globalDueCountLbl.textContent = globalDue.length;
+
+        const examWords = sortedWords.filter(w =>
+            (w.progress_global?.excellentStreak || 0) >= 9 &&
+            !w.progress_global?.isActive &&
+            (!w.progress_global?.nextDate || w.progress_global.nextDate <= now)
+        );
+        const examCard = document.getElementById('exam-mode-card');
+        const examCountEl = document.getElementById('exam-ready-count');
+        const examBtn = document.getElementById('btn-start-exam');
+
+        // Global Study Card Clickable
+        const globalStudyCard = this.btnStartGlobal ? this.btnStartGlobal.closest('.group-card') : null;
+        if (globalStudyCard) {
+            globalStudyCard.style.cursor = 'pointer';
+            globalStudyCard.onclick = () => this.startSession('global', null);
+        }
+
+        // Toggle visibility based on words count
+        if (examCard) {
+            if (examWords.length === 0) {
+                examCard.style.setProperty('display', 'none', 'important');
+            } else {
+                examCard.style.display = 'block';
+                examCard.style.cursor = 'pointer';
+                examCard.onclick = () => this.prufung.startExamSession();
+
+                if (examCountEl) examCountEl.textContent = examWords.length;
+                if (examBtn) {
+                    examBtn.disabled = false;
+                    examBtn.style.opacity = '1';
+                    examBtn.style.cursor = 'pointer';
+                    examBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.prufung.startExamSession();
+                    };
+                }
+            }
+        }
+
+        const dashTotalWords = document.getElementById('dash-total-words');
+        if (dashTotalWords) dashTotalWords.textContent = sortedWords.length;
+
+        // --- LAST OPENED CARD LOGIC ---
+        const lastCard = document.getElementById('last-opened-card');
+        const lastMetaStr = localStorage.getItem('last_opened_session');
+
+        if (lastCard) {
+            let isValid = false;
+            let title = '';
+            let mode = '';
+            let groupIndex = null;
+            let folderOrGroupWords = [];
+
+            if (lastMetaStr) {
+                try {
+                    const meta = JSON.parse(lastMetaStr);
+                    mode = meta.mode;
+                    groupIndex = meta.groupIndex;
+
+                    if (mode === 'folder') {
+                        // Deriving folder info from words (groupIndex is folder name)
+                        title = groupIndex;
+                        folderOrGroupWords = this.allWordsCache.filter(w => w.folder === groupIndex);
+                        isValid = folderOrGroupWords.length > 0;
+                    } else if (mode === 'idiom_folder') {
+                        title = groupIndex;
+                        if (window.IdiomsUI) {
+                            folderOrGroupWords = window.IdiomsUI.idiomsCache.filter(i => i.folder === groupIndex);
+                            isValid = folderOrGroupWords.length > 0;
+                        }
+                    } else if (mode === 'idiom_global') {
+                        title = 'Все идиомы';
+                        if (window.IdiomsUI) {
+                            folderOrGroupWords = window.IdiomsUI.idiomsCache;
+                            isValid = folderOrGroupWords.length > 0;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing last opened session", e);
+                }
+            }
+
+            if (isValid) {
+                lastCard.classList.remove('hidden');
+
+                // Stats Logic
+                const total = folderOrGroupWords.length;
+                const due = folderOrGroupWords.filter(w => !w.progress_global?.isActive && (w.progress_global?.excellentStreak || 0) < 9 && (!w.progress_global || w.progress_global.nextDate <= now)).length;
+                const mastered = folderOrGroupWords.filter(w => w.progress_global && w.progress_global.is_ideal).length;
+                const progressPct = total === 0 ? 0 : Math.round((mastered / total) * 100);
+
+                // UI References
+                const titleEl = document.getElementById('last-opened-title');
+                const statTotalEl = document.getElementById('last-opened-stat-total');
+                const statDueEl = document.getElementById('last-opened-stat-due');
+                const statLearnedEl = document.getElementById('last-opened-stat-learned');
+                const progressTextEl = document.getElementById('last-opened-progress-text');
+                const progressBarEl = document.getElementById('last-opened-progress-bar');
+                const btnContinue = document.getElementById('btn-continue-last');
+                const btnEdit = document.getElementById('btn-edit-last-opened');
+
+                // Update UI
+                if (titleEl) titleEl.textContent = title;
+                if (statTotalEl) statTotalEl.textContent = total;
+                if (statDueEl) {
+                    statDueEl.textContent = due;
+                    statDueEl.style.color = due > 0 ? 'var(--accent-2)' : 'rgba(255,255,255,0.3)';
+                }
+                if (statLearnedEl) {
+                    statLearnedEl.textContent = mastered;
+                    statLearnedEl.style.color = mastered > 0 ? 'var(--secondary)' : 'rgba(255,255,255,0.3)';
+                }
+
+                if (progressTextEl) progressTextEl.textContent = `${progressPct}%`;
+                if (progressBarEl) progressBarEl.style.width = `${progressPct}%`;
+
+                // Handle visibility/completion state
+                if (due === 0) {
+                    lastCard.classList.add('hidden');
+                    lastCard.style.setProperty('display', 'none', 'important');
+                } else {
+                    lastCard.classList.remove('hidden');
+                    lastCard.style.display = ''; // Revert to CSS/inline default
+                    lastCard.classList.remove('completed');
+
+                    lastCard.style.cursor = 'pointer';
+                    lastCard.onclick = () => {
+                        if (mode.startsWith('idiom_') && window.IdiomsUI) {
+                            window.IdiomsUI.startIdiomSession(groupIndex);
+                        } else {
+                            this.startSession(mode, groupIndex);
+                        }
+                    };
+                }
+
+                // Bind Buttons
+                if (btnContinue) {
+                    btnContinue.onclick = (e) => {
+                        e.stopPropagation();
+                        if (mode.startsWith('idiom_') && window.IdiomsUI) {
+                            window.IdiomsUI.startIdiomSession(groupIndex);
+                        } else {
+                            this.startSession(mode, groupIndex);
+                        }
+                    };
+                }
+
+                if (btnEdit) {
+                    btnEdit.onclick = (e) => {
+                        e.stopPropagation();
+                        if (mode === 'folder') {
+                            this.openFolderEditor(groupIndex);
+                        }
+                    };
+                }
+            } else {
+                lastCard.classList.add('hidden');
+                lastCard.style.setProperty('display', 'none', 'important');
+            }
+        }
+
+        this.btnStartGlobal.onclick = () => this.startSession('global', null);
+
+        // Render Folders
+        this.renderFolders();
+
+        // Ensure idiom cards are refreshed
+        if (window.IdiomsUI && typeof window.IdiomsUI.renderStudyIdiomCards === 'function') {
+            window.IdiomsUI.renderStudyIdiomCards();
+        }
+
+    }
+
+    // --- TTS HELPER ---
+    speakText(text, lang = 'de', onEndCallback) {
+        if (!text || !this.settings.audio) {
+            if (onEndCallback) onEndCallback();
+            return;
+        }
+
+        const selectedOpt = lang === 'de' ? (this.settings.selectAudioDe || 'elevenlabs_Qy4b2JlSGxY7I9M9Bqxb') : (this.settings.selectAudioRu || 'elevenlabs_3EuKHIEZbSzrHGNmdYsx');
+        let provider = 'elevenlabs';
+        let voiceVariant = '';
+
+        if (selectedOpt.startsWith('elevenlabs_')) {
+            provider = 'elevenlabs';
+            voiceVariant = selectedOpt.replace('elevenlabs_', '');
+        } else if (selectedOpt.startsWith('responsivevoice_')) {
+            provider = 'responsivevoice';
+            voiceVariant = selectedOpt.replace('responsivevoice_', '');
+        } else if (selectedOpt.startsWith('browser_')) {
+            provider = 'browser';
+            voiceVariant = selectedOpt.replace('browser_', '');
+        }
+
+        const fallbackStandard = (targetVoiceName) => {
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = (lang === 'de') ? 'de-DE' : 'ru-RU';
+            if (targetVoiceName) {
+                const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith(lang));
+                let matchedVoice = null;
+                const isFemale = targetVoiceName.includes('female');
+                
+                if (isFemale) {
+                    matchedVoice = voices.find(v => v.name.toLowerCase().includes('female') || v.name.includes('Hedda') || v.name.includes('Irina') || v.name.includes('Katja'));
+                } else {
+                    matchedVoice = voices.find(v => v.name.toLowerCase().includes('male') || v.name.includes('Stefan') || v.name.includes('Pavel') || v.name.includes('David'));
+                }
+                
+                if (!matchedVoice && voices.length > 0) {
+                    matchedVoice = voices[isFemale ? 0 : (voices.length > 1 ? 1 : 0)];
+                }
+                if (matchedVoice) u.voice = matchedVoice;
+            }
+            if (onEndCallback) u.onend = onEndCallback;
+            window.speechSynthesis.speak(u);
+        };
+
+        const fallbackResponsiveVoice = (targetVoiceName) => {
+            if (window.responsiveVoice && window.responsiveVoice.voiceSupport()) {
+                const rVoice = targetVoiceName || ((lang === 'de') ? "Deutsch Male" : "Russian Female");
+                window.responsiveVoice.speak(text, rVoice, { onend: onEndCallback });
+            } else {
+                fallbackStandard();
+            }
+        };
+
+        this.currentSpeakId = (this.currentSpeakId || 0) + 1;
+        const mySpeakId = this.currentSpeakId;
+
+        if (provider === 'browser') {
+            fallbackStandard(voiceVariant);
+            return;
+        }
+
+        if (provider === 'responsivevoice') {
+            fallbackResponsiveVoice(voiceVariant);
+            return;
+        }
+
+        // ElevenLabs provider
+        const apiKey = '';
+        const voiceId = voiceVariant;
+
+        fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'xi-api-key': apiKey
+            },
+            body: JSON.stringify({
+                text: text,
+                model_id: 'eleven_multilingual_v2',
+                output_format: 'mp3_44100_128'
+            })
+        })
+        .then(async response => {
+            if (!response.ok) {
+                let errorBody = "";
+                try {
+                    const errData = await response.json();
+                    errorBody = JSON.stringify(errData);
+                } catch (e) {
+                    errorBody = await response.text();
+                }
+
+                if (response.status === 401 || response.status === 429 || errorBody.toLowerCase().includes('quota')) {
+                    console.warn("ElevenLabs quota exceeded or auth error. Switching to fallback.");
+                    const fallbackOpt = lang === 'de' ? 'responsivevoice_Deutsch Female' : 'responsivevoice_Russian Female';
+                    if (lang === 'de') {
+                        this.settings.selectAudioDe = fallbackOpt;
+                        if (this.tempSettings) this.tempSettings.selectAudioDe = fallbackOpt;
+                    } else {
+                        this.settings.selectAudioRu = fallbackOpt;
+                        if (this.tempSettings) this.tempSettings.selectAudioRu = fallbackOpt;
+                    }
+                    
+                    localStorage.setItem('elevenlabs_blocked', 'true');
+                    this.db.saveSettings(this.settings);
+                    this.syncTogglesUI();
+                }
+
+                throw new Error(`ElevenLabs API Error ${response.status}: ${errorBody}`);
+            }
+            
+            let currentChars = parseInt(localStorage.getItem('elevenlabs_chars') || '0', 10);
+            currentChars += text.length;
+            localStorage.setItem('elevenlabs_chars', currentChars.toString());
+            
+            const countElem = document.getElementById('elevenlabs-char-count');
+            if (countElem) countElem.textContent = currentChars.toLocaleString();
+            
+            if (currentChars >= 10000 && localStorage.getItem('elevenlabs_blocked') !== 'true') {
+                console.warn("ElevenLabs quota exceeded locally. Blocking further usage.");
+                localStorage.setItem('elevenlabs_blocked', 'true');
+                this.syncTogglesUI();
+            }
+
+            return response.blob();
+        })
+        .then(blob => {
+            if (this.currentSpeakId !== mySpeakId || !this.settings.audio) return;
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            this.currentAudio = audio;
+
+            audio.onended = () => {
+                if (this.currentAudio === audio) this.currentAudio = null;
+                if (onEndCallback) onEndCallback();
+            };
+            audio.onerror = () => {
+                if (this.currentSpeakId === mySpeakId && this.settings.audio) fallbackResponsiveVoice();
+            };
+            audio.play().catch(e => {
+                if (this.currentSpeakId === mySpeakId && this.settings.audio) fallbackResponsiveVoice();
+            });
+        })
+        .catch(error => {
+            console.warn('ElevenLabs Error, fallback to ResponsiveVoice:', error);
+            if (this.currentSpeakId === mySpeakId && this.settings.audio) {
+                // If we failed, fallback opt might be active already, but let's just make sure we play audio
+                const fallbackOpt = lang === 'de' ? 'Deutsch Female' : 'Russian Female';
+                fallbackResponsiveVoice(fallbackOpt);
+            }
+        });
+    }
+
+speakSequence(items) {
+    if (!items.length || !this.settings.audio) return;
+    const item = items.shift();
+    this.speakText(item.text, item.lang, () => {
+        if (items.length && this.settings.audio) {
+            this.speakSequence(items);
+        }
+    });
+}
+
+stopAudio() {
+    this.currentSpeakId = (this.currentSpeakId || 0) + 1;
+    if (this.currentAudio) {
+        this.currentAudio.pause();
+        this.currentAudio.currentTime = 0;
+        this.currentAudio = null;
+    }
+    if (window.responsiveVoice) window.responsiveVoice.cancel();
+    window.speechSynthesis.cancel();
+}
+
+playDeSequence(word) {
+    if (!this.settings.audio || !word) return;
+
+    const rawItems = [];
+    if (this.settings.audioWord && word.word) rawItems.push({ text: word.word, lang: 'de' });
+    if (this.settings.audioInfo1 && word.info1 && !word._isIdiom) rawItems.push({ text: word.info1, lang: 'de' });
+    if (this.settings.audioInfo2 && word.info2) rawItems.push({ text: word.info2, lang: 'de' });
+    if (this.settings.audioEx1 && word.ex1) rawItems.push({ text: word.ex1, lang: 'de' });
+    if (this.settings.audioEx2 && word.ex2) rawItems.push({ text: word.ex2, lang: 'de' });
+
+    if (rawItems.length) {
+        const groupedItems = [];
+        rawItems.forEach(item => {
+            const last = groupedItems[groupedItems.length - 1];
+            if (last && last.lang === item.lang) {
+                last.text += '. ' + item.text;
+            } else {
+                groupedItems.push({ ...item });
+            }
+        });
+
+        this.stopAudio();
+        this.speakSequence(groupedItems);
+    }
+}
+
+saveSessionState() {
+    if (!this.currentSession) return;
+    const key = `study_session_${this.currentSession.mode}_${this.currentSession.groupIndex ?? 'all'}`;
+    const state = {
+        queueIds: this.currentSession.queue.map(w => w.id),
+        currentIndex: this.currentSession.currentIndex,
+        timestamp: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(state));
+}
+
+clearSessionState(mode, groupIndex) {
+    const key = `study_session_${mode}_${groupIndex ?? 'all'}`;
+    localStorage.removeItem(key);
+}
+
+// --- SESSION ENGINE ---
+startSession(mode, groupIndex) {
+    // Save Last Opened Context (if folder)
+    if (mode === 'folder') {
+        const meta = {
+            mode,
+            groupIndex,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('last_opened_session', JSON.stringify(meta));
+    }
+
+    const now = Date.now();
+    const progressKey = 'progress_global';
+    const savedKey = `study_session_${mode}_${groupIndex ?? 'all'}`;
+
+    let sessionData = null;
+    const savedData = localStorage.getItem(savedKey);
+
+    if (savedData) {
+        try {
+            const state = JSON.parse(savedData);
+            const queue = state.queueIds
+                .map(id => this.allWordsCache.find(w => w.id === id))
+                .filter(w => !!w);
+
+            if (queue.length > 0 && state.currentIndex < queue.length) {
+                sessionData = {
+                    mode,
+                    groupIndex,
+                    key: progressKey,
+                    queue: queue,
+                    currentIndex: state.currentIndex,
+                    currentWord: null,
+                    history: []
+                };
+            }
+        } catch (e) {
+            console.error("Failed to restore session", e);
+        }
+    }
+
+    if (sessionData) {
+        this.currentSession = sessionData;
+    } else {
+        const scope = this.getWordsForScope(mode, groupIndex);
+        // Regular session excludes Active words AND Exam candidates (score >= 9)
+        let dueWords = scope.filter(w =>
+            !w.progress_global?.isActive &&
+            (w.progress_global?.excellentStreak || 0) < 9 &&
+            (!w[progressKey] || w[progressKey].nextDate <= now)
+        );
+
+        if (dueWords.length === 0) {
+            alert("Нет слов для повторения!");
+            return;
+        }
+
+        dueWords = this.shuffleArray(dueWords);
+        this.currentSession = {
+            mode,
+            groupIndex,
+            key: progressKey,
+            queue: dueWords,
+            currentIndex: 0,
+            currentWord: null,
+            history: []
+        };
+        this.saveSessionState();
+    }
+
+    const scope = this.getWordsForScope(mode, groupIndex);
+    this.updateStatsUI(scope);
+
+    // Update Title
+    if (this.sessionGroupTitle) {
+        if (mode === 'global') {
+            this.sessionGroupTitle.textContent = 'Все слова';
+        } else if (mode === 'folder') {
+            this.sessionGroupTitle.textContent = groupIndex; // groupIndex is folder name
+        }
+    }
+
+    if (window.switchView) window.switchView(this.viewStudySession);
+    this.startTracking();
+    this.showNextCard();
+}
+
+/**
+ * Starts a session with pre-filtered/mapped words (e.g. from IdiomsUI)
+ */
+startSessionWithWords(words, title) {
+    if (!words || words.length === 0) {
+        alert("Нет элементов для изучения!");
+        return;
+    }
+
+    this.currentSession = {
+        mode: 'custom',
+        groupIndex: title,
+        key: 'progress_global',
+        queue: words,
+        currentIndex: 0,
+        currentWord: null,
+        history: []
+    };
+
+    if (this.sessionGroupTitle) {
+        this.sessionGroupTitle.textContent = title;
+    }
+
+    // Reset stats UI for the custom session
+    this.updateStatsUI(words);
+
+    if (window.switchView) window.switchView(this.viewStudySession);
+    this.startTracking();
+    this.showNextCard();
+}
+
+initSessionControls() {
+    if (this.btnExitSession) {
+        this.btnExitSession.onclick = () => {
+            // Always stop voice recognition on exit
+            if (window.VoiceControl) {
+                window.VoiceControl.stop();
+                if (this.btnToggleVoice) this.btnToggleVoice.classList.remove('active');
+            }
+
+            if (!this.currentSession) {
+                this.stopTracking();
+                if (window.switchView) window.switchView(this.viewStudy);
+                this.renderStudyDashboard();
+                return;
+            }
+
+            // Check if we have history to undo
+            if (this.currentSession.history && this.currentSession.history.length > 0) {
+                // --- UNDO LAST ACTION ---
+                const lastAction = this.currentSession.history.pop();
+                const key = this.currentSession.key;
+
+                // Restore progress on BOTH the global cache word AND the queue instance
+                const globalWord = this.allWordsCache.find(w => w.id === lastAction.wordId);
+                const queueWord = this.currentSession.queue.find(w => w.id === lastAction.wordId);
+
+                const targets = [];
+                if (globalWord) targets.push(globalWord);
+                if (queueWord && queueWord !== globalWord) targets.push(queueWord);
+
+                targets.forEach(w => {
+                    if (lastAction.oldProgress) {
+                        w[key] = JSON.parse(JSON.stringify(lastAction.oldProgress));
+                    } else {
+                        delete w[key];
+                    }
+                });
+
+                // Revert in DB (best effort) — restore old progress or delete if none existed
+                if (lastAction.oldProgress) {
+                    this.db.updateProgress(lastAction.wordId, key, lastAction.oldProgress).catch(console.error);
+                } else {
+                    // Word had no progress before — delete the progress node
+                    this.db.updateProgress(lastAction.wordId, key, null).catch(console.error);
+                }
+
+                // Move index back to the undone word
+                this.currentSession.currentIndex = lastAction.queueIndex;
+
+                // Set currentWord directly so showNextCard(true) displays it
+                const restoredWord = queueWord || globalWord;
+                if (restoredWord) {
+                    this.currentSession.currentWord = restoredWord;
+                }
+
+                // Update Stats UI immediately
+                const scope = this.getWordsForScope(this.currentSession.mode, this.currentSession.groupIndex);
+                this.updateStatsUI(scope);
+
+                // Save session state with the reverted index
+                this.saveSessionState();
+
+                // Stop any current audio
+                this.stopAudio();
+
+                // Show the restored card (stayOnCurrent=true bypasses skip-stale logic)
+                this.showNextCard(true);
+            } else {
+                // No history — exit session
+                this.stopTracking();
+                this.clearSessionState(this.currentSession.mode, this.currentSession.groupIndex);
+                this.currentSession = null;
+                if (window.switchView) window.switchView(this.viewStudy);
+                this.renderStudyDashboard();
+            }
+        };
+    }
+
+    if (this.flashcard) {
+        this.flashcard.onclick = () => {
+            // Do not flip if the card is in 'deleted' state
+            if (this.deletedWordBackup) return;
+
+            // Stop any ongoing speech immediately on flip
+            this.stopAudio();
+
+            const willShowBack = !this.flashcard.classList.contains('is-flipped');
+            this.flashcard.classList.toggle('is-flipped');
+
+            if (willShowBack) {
+                // Speak translation when flipping to the back, if enabled
+                if (this.settings.audio && this.settings.audioTranslation && this.currentSession && this.currentSession.currentWord) {
+                    const word = this.currentSession.currentWord;
+                    if (word._isIdiom && word.info1 && this.settings.audioInfo1) {
+                        // Sequential: Translation first, then Meaning (info1) in Russian
+                        this.speakSequence([
+                            { text: word.translation, lang: 'ru' },
+                            { text: word.info1, lang: 'ru' }
+                        ]);
+                    } else {
+                        this.speakText(word.translation, 'ru');
+                    }
+                }
+            } else {
+                // Repeat German sequence when flipping back to front
+                if (this.settings.audio && this.currentSession && this.currentSession.currentWord) {
+                    this.playDeSequence(this.currentSession.currentWord);
+                }
+            }
+        };
+    }
+
+    document.querySelectorAll('.btn-rate').forEach(btn => {
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            if (this.ratingButtons) this.ratingButtons.style.pointerEvents = 'none'; // Prevent double-click
+            let target = e.target;
+            while (!target.classList.contains('btn-rate')) target = target.parentElement;
+            await this.processCardResult(parseInt(target.dataset.rating));
+        };
+    });
+
+    if (this.btnFlashcardEdit) {
+        this.btnFlashcardEdit.onclick = (e) => {
+            e.stopPropagation();
+            if (this.currentSession && this.currentSession.currentWord) {
+                const word = this.currentSession.currentWord;
+                if (word._isIdiom && window.IdiomsUI) {
+                    window.IdiomsUI.openIdiomEditModal(word);
+                } else if (window.openEditModal) {
+                    window.openEditModal(word);
+                }
+            }
+        };
+    }
+
+    if (this.btnRestoreWord) {
+        this.btnRestoreWord.onclick = async (e) => {
+            if (e) e.stopPropagation();
+            if (this.deletedWordBackup) {
+                const word = this.deletedWordBackup;
+                const id = word.id;
+                delete word.id;
+                await this.db.db.ref(`users/${this.userId}/words/${id}`).set(word);
+                alert("Слово восстановлено!");
+                this.deletedWordBackup = null;
+                this.onWordRestored();
+            }
+        };
+    }
+
+    if (this.btnSkipDeleted) {
+        this.btnSkipDeleted.onclick = (e) => {
+            if (e) e.stopPropagation();
+            this.currentSession.currentIndex++;
+            this.showNextCard();
+        };
+    }
+}
+
+onWordRestored() {
+    if (this.cardDeletedOverlay) this.cardDeletedOverlay.classList.add('hidden');
+    // Restore all field visibilities
+    if (this.cardWord) this.cardWord.style.visibility = 'visible';
+    if (this.cardFolderName) this.cardFolderName.style.visibility = 'visible';
+    if (this.cardInfo1) this.cardInfo1.style.visibility = 'visible';
+    if (this.cardInfo2) this.cardInfo2.style.visibility = 'visible';
+    if (this.cardExamples) this.cardExamples.style.visibility = 'visible';
+    if (this.btnFlashcardEdit) this.btnFlashcardEdit.style.visibility = 'visible';
+
+    // Re-enable ratings
+    if (this.ratingButtons) {
+        this.ratingButtons.style.opacity = '1';
+        this.ratingButtons.style.pointerEvents = 'auto';
+    }
+}
+
+onWordUpdated(id, updates) {
+    if (this.currentSession && this.currentSession.currentWord && this.currentSession.currentWord.id === id) {
+        Object.assign(this.currentSession.currentWord, updates);
+
+        // If it was hidden, show it
+        this.onWordRestored();
+
+        this.showNextCard(true); // stay on same card but refresh UI
+    }
+}
+
+onWordDeleted(id, backupData) {
+    if (this.currentSession && this.currentSession.currentWord && this.currentSession.currentWord.id === id) {
+        this.deletedWordBackup = backupData;
+        if (this.cardDeletedOverlay) {
+            this.cardDeletedOverlay.classList.remove('hidden');
+        }
+        // Hide all content and edit icon
+        if (this.cardWord) this.cardWord.style.visibility = 'hidden';
+        if (this.cardFolderName) this.cardFolderName.style.visibility = 'hidden';
+        if (this.cardInfo1) this.cardInfo1.style.visibility = 'hidden';
+        if (this.cardInfo2) this.cardInfo2.style.visibility = 'hidden';
+        if (this.cardExamples) this.cardExamples.style.visibility = 'hidden';
+        if (this.btnFlashcardEdit) this.btnFlashcardEdit.style.visibility = 'hidden';
+
+        // Disable ratings and flip
+        if (this.ratingButtons) {
+            this.ratingButtons.style.opacity = '0.3';
+            this.ratingButtons.style.pointerEvents = 'none';
+        }
+        if (this.flashcard) {
+            this.flashcard.classList.remove('is-flipped');
+        }
+    }
+}
+
+highlightWordInText(text, wordToHighlight, extraInfo = '') {
+    if (!text || (!wordToHighlight && !extraInfo)) return text;
+
+    // Combine main word and extra info (forms)
+    // e.g. "kreisen" + " (kreist, kreiste, ist gekreist)"
+    let combinedSource = (wordToHighlight || '') + ' ' + (extraInfo || '');
+
+    // Clean: remove brackets, specific stopwords (auxiliaries/articles), punctuation
+    let clean = combinedSource
+        .replace(/[()\[\]]/g, ' ') // remove brackets
+        .replace(/\b(der|die|das|den|dem|des|ein|eine|einer|einem|einen)\b/gi, ' ') // Articles
+        .replace(/\b(ist|sind|war|waren|hat|haben|hatte|hatten|bin|bist|wird|werden|wurde)\b/gi, ' ') // Auxiliaries
+        .replace(/[,.;:!?]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Split and filter short tokens
+    let rawTokens = clean.split(' ').filter(t => t.length > 1);
+    if (rawTokens.length === 0) return text;
+
+    // Generate stems
+    let searchStems = [];
+    rawTokens.forEach(token => {
+        searchStems.push(token); // Add exact token
+        // Add stem if word is long enough
+        if (token.length >= 5) {
+            searchStems.push(token.substring(0, token.length - 2));
+        }
+    });
+
+    // Unique patterns and Sort longest first
+    searchStems = [...new Set(searchStems)];
+    searchStems.sort((a, b) => b.length - a.length);
+
+    // Build Patterns
+    // If stem length >= 4, allow prefix match (compound words/ge- prefix)
+    // Else strict word start
+    const regexParts = searchStems.map(stem => {
+        const esc = stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (stem.length >= 4) {
+            return `[\\w]*${esc}[\\w]*`;
+        } else {
+            return `\\b${esc}[\\w]*`;
+        }
+    });
+
+    const patternStr = `(${regexParts.join('|')})`;
+
+    try {
+        return text.replace(new RegExp(patternStr, 'gi'), '<span class="highlight">$&</span>');
+    } catch (e) {
+        return text;
+    }
+}
+
+getGenderColor(word) {
+    // Check if the word starts with an article
+    const wordLower = word.toLowerCase().trim();
+
+    // Check for feminine: die
+    if (wordLower.startsWith('die ')) {
+        return {
+            base: '#ff69b4',           // Hot pink for feminine
+            background: 'rgba(255, 105, 180, 0.08)'  // Very subtle pink background
+        };
+    }
+
+    // Check for masculine: der
+    if (wordLower.startsWith('der ')) {
+        return {
+            base: '#4a9eff',           // Blue for masculine
+            background: 'rgba(74, 158, 255, 0.08)'   // Very subtle blue background
+        };
+    }
+
+    // Check for neuter: das
+    if (wordLower.startsWith('das ')) {
+        return {
+            base: '#e6c200',           // Muted yellow for neuter (less bright)
+            background: 'rgba(230, 194, 0, 0.08)'    // Very subtle yellow background
+        };
+    }
+
+    // No article found, return null
+    return null;
+}
+
+showNextCard(stayOnCurrent = false) {
+    if (!stayOnCurrent) {
+        // Skip words that are no longer due (e.g. studied in another mode/folder)
+        // or have become active/mastered
+        const now = Date.now();
+        while (this.currentSession.currentIndex < this.currentSession.queue.length) {
+            const word = this.currentSession.queue[this.currentSession.currentIndex];
+            const prog = word.progress_global; // Always use global progress
+
+            const isDue = !prog || !prog.nextDate || prog.nextDate <= now;
+            const isActive = prog && prog.isActive;
+            const isExamCandidate = prog && (prog.excellentStreak || 0) >= 9;
+
+            // Valid if: Due AND Not Active AND Not Exam Candidate
+            if (isDue && !isActive && !isExamCandidate) {
+                break; // Found a valid word
+            }
+
+            // Skip stale word
+            this.currentSession.currentIndex++;
+        }
+
+        if (this.currentSession.currentIndex >= this.currentSession.queue.length) {
+            // Check if there are any words left to review before actually ending
+            const currentScope = this.getWordsForScope(this.currentSession.mode, this.currentSession.groupIndex);
+            let remainingDue = currentScope.filter(w =>
+                !w.progress_global?.isActive &&
+                (w.progress_global?.excellentStreak || 0) < 9 &&
+                (!w.progress_global?.nextDate || w.progress_global.nextDate <= now)
+            );
+
+            if (remainingDue.length > 0) {
+                // There are still words to review! Refresh the queue and continue.
+                remainingDue = this.shuffleArray(remainingDue);
+                this.currentSession.queue = remainingDue;
+                this.currentSession.currentIndex = 0;
+                this.saveSessionState();
+                return this.showNextCard(false);
+            }
+
+            this.stopTracking();
+            this.clearSessionState(this.currentSession.mode, this.currentSession.groupIndex);
+            alert("Сессия завершена!");
+            this.currentSession = null;
+            if (window.switchView) window.switchView(this.viewStudy);
+            this.renderStudyDashboard();
+            return;
+        }
+        const word = this.currentSession.queue[this.currentSession.currentIndex];
+        this.currentSession.currentWord = word;
+        this.saveSessionState();
+    }
+
+    const word = this.currentSession.currentWord;
+
+    if (this.cardFolderName) {
+        this.cardFolderName.textContent = '';
+    }
+
+    if (this.cardDeletedOverlay) this.cardDeletedOverlay.classList.add('hidden');
+    this.deletedWordBackup = null;
+
+    // Restore all field visibilities, ratings, and flip
+    this.onWordRestored();
+
+    this.cardTranslation.textContent = '';
+    this.cardWord.textContent = '';
+    this.cardInfo1.textContent = '';
+    if (this.cardInfo2) this.cardInfo2.textContent = '';
+    this.cardExamples.innerHTML = '';
+
+    this.flashcard.classList.remove('is-flipped');
+
+    // Initial base size with slight reduction for very long words (width-based heuristic)
+    const len = word.word.length;
+    if (len > 30) {
+        this.cardWord.style.fontSize = '1.5rem';
+    } else if (len > 22) {
+        this.cardWord.style.fontSize = '1.6rem';
+    } else {
+        this.cardWord.style.fontSize = '1.8rem';
+    }
+
+    // Apply gender-based highlighting
+    const genderColors = this.getGenderColor(word.word);
+
+    // 1. Handle Word Text Coloring
+    if (this.settings.genderColors && genderColors) {
+        if (word.word.includes(',')) {
+            const commaIndex = word.word.indexOf(',');
+            const beforeComma = word.word.substring(0, commaIndex);
+            const afterComma = word.word.substring(commaIndex);
+            this.cardWord.innerHTML = '';
+
+            // Color the part before comma with gender color
+            const coloredSpan = document.createElement('span');
+            coloredSpan.style.color = genderColors.base;
+            coloredSpan.textContent = beforeComma;
+            this.cardWord.appendChild(coloredSpan);
+
+            // Part after comma should be default theme color (not inherit)
+            const afterCommaSpan = document.createElement('span');
+            // Get the current theme text color from CSS variable
+            const themeTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text-main').trim() || '#ffffff';
+            afterCommaSpan.style.color = themeTextColor;
+            afterCommaSpan.textContent = afterComma;
+            this.cardWord.appendChild(afterCommaSpan);
+        } else {
+            this.cardWord.innerHTML = '';
+            this.cardWord.textContent = word.word;
+            this.cardWord.style.color = genderColors.base;
+        }
+    } else {
+        this.cardWord.innerHTML = '';
+        this.cardWord.textContent = word.word;
+        this.cardWord.style.color = '';
+    }
+
+    // 2. Handle Card Background Coloring (Independent)
+    if (this.flashcard) {
+        if (this.settings.genderCardBackground && genderColors) {
+            this.flashcard.style.background = `linear-gradient(135deg, ${genderColors.background}, rgba(255,255,255,0.02))`;
+        } else {
+            this.flashcard.style.background = '';
+        }
+    }
+
+    if (word._isIdiom) {
+        this.cardInfo1.textContent = '';
+    } else {
+        this.cardInfo1.textContent = word.info1 || '';
+    }
+    if (this.cardInfo2) this.cardInfo2.textContent = word.info2 || '';
+
+    const examplesProps = ['ex1', 'ex2'];
+    const examplesToggles = ['showEx1', 'showEx2'];
+
+    this.cardExamples.innerHTML = examplesProps.map((prop, idx) => {
+        if (!word[prop]) return '';
+        const isVisible = this.settings[examplesToggles[idx]];
+        const style = isVisible ? '' : 'style="display:none"';
+        return `<p ${style}>• ${this.highlightWordInText(word[prop], word.word, word.info1)}</p>`;
+    }).join('');
+
+    this.updateElementsVisibility();
+
+    // Sequential Audio Queue
+    this.playDeSequence(word);
+
+    setTimeout(() => {
+        const transLen = word.translation.length;
+        if (transLen > 40) {
+            this.cardTranslation.style.fontSize = '1.3rem';
+        } else if (transLen > 25) {
+            this.cardTranslation.style.fontSize = '1.45rem';
+        } else {
+            this.cardTranslation.style.fontSize = '1.6rem';
+        }
+        this.cardTranslation.textContent = word.translation || '';
+        if (this.cardMeaning) {
+            if (word._isIdiom && word.info1) {
+                this.cardMeaning.textContent = word.info1;
+                this.cardMeaning.classList.remove('hidden');
+            } else {
+                this.cardMeaning.textContent = '';
+                this.cardMeaning.classList.add('hidden');
+            }
+        }
+    }, 400);
+
+    this.ratingButtons.classList.remove('hidden');
+    this.ratingButtons.style.pointerEvents = 'auto';
+}
+
+    async processCardResult(rating) {
+    if (!this.currentSession) return;
+    const word = this.currentSession.currentWord;
+    const key = this.currentSession.key;
+
+    const mode = this.settings.studyMode || 'long';
+    const intervals = this.intervalModes[mode];
+    const nextIntervalMs = intervals[rating] || 0;
+    const nextIntervalDays = nextIntervalMs / (24 * 3600 * 1000);
+
+    let scoreChange = 0;
+    switch (rating) {
+        case 1: scoreChange = -999; break;
+        case 2: scoreChange = -3; break;
+        case 3: scoreChange = -1.5; break;
+        case 4: scoreChange = 0; break;
+        case 5: scoreChange = 1.5; break;
+        case 6: scoreChange = 3; break;
+    }
+
+    const currentProgress = word[key] || {};
+    let activityScore = currentProgress.excellentStreak || 0;
+    let isActive = currentProgress.isActive || false;
+
+    if (scoreChange === -999) {
+        activityScore = 0;
+    } else {
+        activityScore = Math.max(0, activityScore + scoreChange);
+    }
+
+    // Round to 1 decimal to avoid float precision issues
+    activityScore = parseFloat(activityScore.toFixed(1));
+
+    // CAP at 9 in regular sessions - can only reach 10 via exam
+    if (activityScore > 9) activityScore = 9;
+
+    const nextTimestamp = Date.now() + nextIntervalMs;
+    // is_ideal logic:
+    // - If word passed exam (isActive) → true forever
+    // - Ratings 5 (Помню) and 6 (Отлично) → true
+    // - All other ratings → false
+    const is_ideal = isActive ? true : (rating === 5 || rating === 6);
+    const newProgress = {
+        interval: nextIntervalDays,
+        nextDate: nextTimestamp,
+        lastRating: rating,
+        lastReviewed: Date.now(),
+        excellentStreak: activityScore,
+        isActive: isActive,
+        is_ideal: is_ideal
+    };
+
+    // Save history for Undo (cap at 10 entries)
+    const oldProgress = word[key] ? JSON.parse(JSON.stringify(word[key])) : null;
+    this.currentSession.history.push({
+        wordId: word.id,
+        oldProgress: oldProgress,
+        queueIndex: this.currentSession.currentIndex
+    });
+    if (this.currentSession.history.length > 10) {
+        this.currentSession.history.shift(); // Remove oldest entry
+    }
+
+    word[key] = newProgress;
+
+    // Immediate Stats Update
+    const scope = this.getWordsForScope(this.currentSession.mode, this.currentSession.groupIndex);
+    this.updateStatsUI(scope);
+
+    try {
+        await this.db.updateProgress(word.id, key, newProgress);
+    } catch (e) {
+        console.error(e);
+    }
+
+    this.currentSession.currentIndex++;
+    this.showNextCard();
+}
+
+}
+
+// Export for use in main app
+window.StudyModule = new StudyModule();

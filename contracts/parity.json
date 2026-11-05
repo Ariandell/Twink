@@ -1,0 +1,38 @@
+{
+  "now": 1800000000000,
+  "reviews": [
+    {"previous":{"excellentStreak":8},"rating":1,"mode":"long","score":0,"days":0.041666666666666664,"ideal":false},
+    {"previous":{"excellentStreak":2},"rating":2,"mode":"long","score":0,"days":1,"ideal":false},
+    {"previous":{"excellentStreak":5},"rating":3,"mode":"long","score":3.5,"days":4,"ideal":false},
+    {"previous":{"excellentStreak":5},"rating":4,"mode":"long","score":5,"days":7,"ideal":false},
+    {"previous":{"excellentStreak":8.5},"rating":5,"mode":"long","score":9,"days":12,"ideal":true},
+    {"previous":{"excellentStreak":7.5},"rating":6,"mode":"long","score":9,"days":21,"ideal":true},
+    {"previous":{"excellentStreak":2},"rating":3,"mode":"intensive","score":0.5,"days":2,"ideal":false},
+    {"previous":{"excellentStreak":6},"rating":4,"mode":"intensive","score":6,"days":4,"ideal":false},
+    {"previous":{"excellentStreak":0},"rating":5,"mode":"intensive","score":1.5,"days":9,"ideal":true},
+    {"previous":{"excellentStreak":0},"rating":6,"mode":"intensive","score":3,"days":17,"ideal":true}
+  ],
+  "answers": [
+    {"word":{"word":"der Morgen"},"answer":"der Morgen","correct":true},
+    {"word":{"word":"der Morgen"},"answer":"die Morgen","correct":false,"articleError":true},
+    {"word":{"word":"der Morgen"},"answer":"Morgen","correct":false,"articleError":true},
+    {"word":{"word":"entdecken","info1":"entdeckte, hat entdeckt"},"answer":"hat entdeckt, entdeckte, entdecken","correct":true},
+    {"word":{"word":"entdecken","info1":"entdeckte, hat entdeckt"},"answer":"entdecken, entdeckte, entdeckt hat","correct":false,"sequenceError":true},
+    {"word":{"word":"entdecken","info1":"entdeckte, hat entdeckt"},"answer":"entdecken, entdeckte, hat entdeckt Müll","correct":false},
+    {"word":{"word":"die Restaurierung, -en"},"answer":"die Restaurierung Restaurierungen","correct":true},
+    {"word":{"word":"die Restaurierung, -en"},"answer":"die Restaurierung","correct":true},
+    {"word":{"word":"fahren","info1":"fuhr, ist/hat gefahren"},"answer":"fahren, fuhr, ist gefahren","correct":true,"partial":true},
+    {"word":{"word":"fahren","info1":"fuhr, ist/hat gefahren"},"answer":"fahren, fuhr, ist hat gefahren","correct":true,"partial":false},
+    {"word":{"word":"schön"},"answer":"schon","correct":false},
+    {"word":{"word":"sich erinnern","info1":"erinnerte sich, hat sich erinnert"},"answer":"sich erinnern, erinnerte sich, hat sich erinnert","correct":true}
+  ],
+  "eligibility": [
+    {"word":{"word":"A"},"exam":false,"eligible":true},
+    {"word":{"word":"A","progress_global":{"excellentStreak":9}},"exam":false,"eligible":false},
+    {"word":{"word":"A","progress_global":{"excellentStreak":9}},"exam":true,"eligible":true},
+    {"word":{"word":"A","progress_global":{"excellentStreak":9,"nextDate":1800000000001}},"exam":true,"eligible":false},
+    {"word":{"word":"A","progress_global":{"excellentStreak":10,"isActive":true}},"exam":false,"eligible":false},
+    {"word":{"idiom":"A","progress_global":{"excellentStreak":9}},"exam":false,"eligible":true},
+    {"word":{"idiom":"A","progress_global":{"excellentStreak":9}},"exam":true,"eligible":false}
+  ]
+}

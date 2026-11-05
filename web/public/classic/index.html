@@ -1,0 +1,2631 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark" data-color-scheme="pure-black">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <title>Personal Vocabulary</title>
+    <!-- Stylesheets Split -->
+    <link rel="stylesheet" href="style-base.css?v=1.6">
+    <link rel="stylesheet" href="style-dashboard.css?v=1.6">
+    <link rel="stylesheet" href="style-session.css?v=1.6">
+    <link rel="stylesheet" href="style-editor.css?v=1.6">
+    <link rel="stylesheet" href="profile.css?v=1.6">
+    <link rel="stylesheet" href="edit-word.css?v=1.6">
+    <link rel="stylesheet" href="idioms.css?v=1.6">
+
+    <style>
+        .guide-section {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .guide-section h2 {
+            margin: 0 0 12px 0;
+            color: var(--secondary);
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .guide-section p {
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 14px;
+            font-size: 0.85rem;
+        }
+
+        .guide-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .guide-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.82rem;
+        }
+
+        .guide-list li:last-child {
+            border-bottom: none;
+        }
+
+        .guide-list li span:first-child {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+    </style>
+
+    <script src="vendor/firebase-compat.js"></script>
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="https://code.responsivevoice.org/responsivevoice.js"></script>
+    <script src="firebase-config.js"></script>
+    <link rel="stylesheet" href="compat-layout.css">
+</head>
+
+<body>
+
+    <!-- Loading Screen - Pure Minimalist -->
+    <style>
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-spinner {
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            position: relative;
+        }
+
+        .spinner-dot {
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            filter: blur(1px);
+        }
+
+        @media (max-width: 768px) {
+            .loading-spinner {
+                width: 24px;
+                height: 24px;
+            }
+
+            .spinner-dot {
+                width: 6px;
+                height: 6px;
+            }
+
+            /* Tighten positions for very small radius */
+            .spinner-dot.dot-1 {
+                left: 9px !important;
+            }
+        }
+    </style>
+    <div id="loading-screen"
+        style="position: fixed; inset: 0; background: #000000; z-index: 9999; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+        <!-- Simple Blurry Spinner -->
+        <div class="loading-spinner">
+            <div class="spinner-dot dot-1"
+                style="position: absolute; top: 0; left: 9px; box-shadow: 0 0 5px rgba(255,255,255,0.5);">
+            </div>
+            <div class="spinner-dot"
+                style="position: absolute; bottom: 3px; right: 3px; opacity: 0.7; box-shadow: 0 0 5px rgba(255,255,255,0.3);">
+            </div>
+            <div class="spinner-dot"
+                style="position: absolute; bottom: 3px; left: 3px; opacity: 0.4; box-shadow: 0 0 5px rgba(255,255,255,0.1);">
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Dashboard -->
+        <div id="dashboard-screen" class="glass-card hidden">
+            <!-- Global Header -->
+            <header class="dashboard-header" id="global-header">
+                <div class="header-left">
+                    <div id="header-profile" class="header-profile" title="Профиль">
+                        <div class="header-avatar-container">
+                            <span id="header-avatar-initial" class="avatar-initial"></span>
+                            <img id="header-avatar-img" src="" alt="Avatar" class="hidden">
+                        </div>
+                        <span id="header-nickname">User</span>
+                    </div>
+                </div>
+
+                <div class="header-center">
+                    <!-- Navigation Tabs (Center) -->
+                    <nav class="main-nav">
+                        <div class="nav-indicator"></div>
+                        <button id="nav-profile-btn" class="nav-tab">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                            <span class="nav-label">Профиль</span>
+                        </button>
+                        <button id="nav-study-btn" class="nav-tab active">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <span class="nav-label">Учить</span>
+                        </button>
+                        <button id="nav-dictionary-btn" class="nav-tab">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                            </svg>
+                            <span class="nav-label">Словарь</span>
+                        </button>
+                        <button id="nav-import-btn" class="nav-tab">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <span class="nav-label">Импорт</span>
+                        </button>
+                        <button id="nav-settings-mobile-btn" class="nav-tab mobile-only-nav-item">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"></circle>
+                                <path
+                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                </path>
+                            </svg>
+                            <span class="nav-label">Настройки</span>
+                        </button>
+                    </nav>
+                </div>
+
+                <div class="header-right">
+                    <button id="nav-settings-btn" class="btn-icon" title="Настройки">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                            </path>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Group Edit Header (Hidden by default, shown when viewing group) -->
+            <header id="group-edit-header" class="dashboard-header hidden">
+                <div class="group-edit-nav" style="justify-content: space-between;">
+                    <button id="btn-back-to-study" class="btn-icon" title="Назад">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="19" y1="12" x2="5" y2="12"></line>
+                            <polyline points="12 19 5 12 12 5"></polyline>
+                        </svg>
+                    </button>
+                    <button id="btn-delete-folder" class="btn-danger-outline hidden hide-on-mobile" style="border-radius: 99px;">
+                        Удалить папку
+                    </button>
+                    <button id="btn-save-group" class="btn-primary" style="border-radius: 99px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="hide-on-desktop">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span class="hide-on-mobile">Готово</span>
+                    </button>
+                </div>
+            </header>
+
+            <main id="dashboard-content" class="dashboard-content">
+
+                <!-- 1. VIEW: PROFILE -->
+                <div id="view-profile" class="view-section hidden"></div>
+
+                <!-- 2. VIEW: STUDY SELECTOR -->
+                <div id="view-study" class="view-section fade-in">
+                    <div id="study-empty-state-view" class="hidden"></div>
+                    <div id="study-dashboard-main" style="max-width: 1400px; margin: 0 auto; width: 100%;">
+                        <div class="section-title">
+                            <h2>Режимы обучения</h2>
+                        </div>
+
+                        <!-- Study Modes Grid -->
+                        <div class="study-modes-grid">
+                            <!-- Global Study Button -->
+                            <div class="group-card" style="width: 100%; max-width: 500px;">
+                                <div class="mode-header">
+                                    <div class="mode-icon-container">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                                            <path
+                                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
+                                            </path>
+                                        </svg>
+                                    </div>
+                                    <div class="mode-title-group">
+                                        <h3 class="mode-title">Весь словарь</h3>
+                                        <p class="mode-description">Тренировка по всем словам в случайном порядке.</p>
+                                    </div>
+                                </div>
+
+                                <!-- Stats Grid -->
+                                <div class="mode-stats-grid">
+                                    <div class="stats-box total-box">
+                                        <div class="stats-label">Всего</div>
+                                        <div id="dash-total-words" class="stats-value">0</div>
+                                    </div>
+                                    <div class="stats-box due-box">
+                                        <div class="stats-label">К повтору</div>
+                                        <div id="global-due-count-lbl" class="stats-value">0</div>
+                                    </div>
+                                </div>
+
+                                <button id="btn-start-global" class="btn-primary start-session-btn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    Начать тренировку
+                                </button>
+                            </div>
+
+                            <!-- All Idioms Card -->
+                            <div class="group-card idiom-study-card" id="all-idioms-card" style="display: none; width: 100%; max-width: 500px;">
+                                <div class="mode-header">
+                                    <div class="mode-icon-container">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    </div>
+                                    <div class="mode-title-group">
+                                        <h3 class="mode-title">Все идиомы</h3>
+                                        <p class="mode-description">Тренировка по всем идиомам.</p>
+                                    </div>
+                                </div>
+                                <div class="mode-stats-grid">
+                                    <div class="stats-box total-box">
+                                        <div class="stats-label">Всего</div>
+                                        <div id="idiom-dash-total" class="stats-value">0</div>
+                                    </div>
+                                    <div class="stats-box due-box">
+                                        <div class="stats-label">К повтору</div>
+                                        <div id="idiom-dash-due" class="stats-value">0</div>
+                                    </div>
+                                </div>
+                                <button class="btn-primary start-session-btn" onclick="window.IdiomsUI.startIdiomSession('__all__')">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                    Учить идиомы
+                                </button>
+                            </div>
+
+                            <!-- Last Opened Group/Folder Card (Redesigned) -->
+                            <div id="last-opened-card" class="group-card last-opened-card hidden"
+                                style="width: 100%; max-width: 500px; display: flex; flex-direction: column; justify-content: space-between;">
+
+                                <!-- Top Content Wrapper -->
+                                <div style="width: 100%;">
+                                    <!-- Header -->
+                                    <div
+                                        style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                                        <div style="flex: 1; min-width: 0; padding-right: 1rem;">
+                                            <h3 id="last-opened-title"
+                                                style="margin: 0; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                Заголовок</h3>
+                                        </div>
+                                        <!-- Edit Button -->
+                                        <button id="btn-edit-last-opened" class="btn-icon"
+                                            style="color: var(--text-muted); padding: 0.5rem;" title="Редактировать">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <line x1="8" y1="6" x2="21" y2="6"></line>
+                                                <line x1="8" y1="12" x2="21" y2="12"></line>
+                                                <line x1="8" y1="18" x2="21" y2="18"></line>
+                                                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                                                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                                                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <!-- Stats Grid -->
+                                    <div class="group-stats-grid" style="margin-bottom: 1.5rem;">
+                                        <div class="group-stat-item">
+                                            <div id="last-opened-stat-total" class="group-stat-value">0</div>
+                                            <div class="group-stat-label">Всего</div>
+                                        </div>
+                                        <div class="group-stat-item">
+                                            <div id="last-opened-stat-due" class="group-stat-value"
+                                                style="color: var(--accent-2);">0</div>
+                                            <div class="group-stat-label">К повтору</div>
+                                        </div>
+                                        <div class="group-stat-item">
+                                            <div id="last-opened-stat-learned" class="group-stat-value"
+                                                style="color: var(--secondary);">0</div>
+                                            <div class="group-stat-label"
+                                                style="display:flex; justify-content:center; align-items:center; gap:4px;">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                                                    style="color: var(--secondary); opacity: 0.8;">
+                                                    <polygon
+                                                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                                                    </polygon>
+                                                </svg>
+                                                Идеально
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Progress Bar -->
+                                    <div class="last-opened-progress-wrapper"
+                                        style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2rem;">
+                                        <div
+                                            style="display: flex; justify-content: space-between; align-items: center;">
+                                            <span style="font-size: 0.75rem; color: var(--text-muted);">Прогресс</span>
+                                            <span id="last-opened-progress-text"
+                                                style="font-size: 0.75rem; font-weight: 600; color: var(--secondary);">0%</span>
+                                        </div>
+                                        <div
+                                            style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                                            <div id="last-opened-progress-bar"
+                                                style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--secondary), var(--accent-bright)); border-radius: 3px; transition: width 0.3s ease;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button id="btn-continue-last" class="btn-primary start-session-btn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    Продолжить
+                                </button>
+                            </div>
+
+                            <!-- Exam Mode Card -->
+                            <div class="group-card" id="exam-mode-card"
+                                style="display: none; width: 100%; max-width: 500px;">
+                                <div class="mode-header">
+                                    <div class="mode-icon-container">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div class="mode-title-group">
+                                        <h3 class="mode-title">Экзамен</h3>
+                                        <p class="mode-description">Сдайте экзамен, чтобы перенести слова в активный
+                                            запас.</p>
+                                    </div>
+                                </div>
+                                <div class="mode-stats-grid">
+                                    <div class="stats-box due-box" style="width: 100%; grid-column: span 2;">
+                                        <div class="stats-label">Готовы к сдаче</div>
+                                        <div id="exam-ready-count" class="stats-value">0</div>
+                                    </div>
+                                </div>
+                                <button id="btn-start-exam" class="btn-primary start-session-btn">
+                                    Начать экзамен
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="section-title"
+                            style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+                            <h2>Папки</h2>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <div style="position: relative;">
+                                    <button class="btn-secondary small" id="folder-sort-toggle" title="Сортировка"
+                                        style="padding: 0.5rem 0.8rem; height: 36px;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="3" y1="6" x2="21" y2="6"></line>
+                                            <line x1="3" y1="12" x2="15" y2="12"></line>
+                                            <line x1="3" y1="18" x2="9" y2="18"></line>
+                                        </svg>
+                                    </button>
+                                    <div id="folder-sort-menu" class="dropdown-menu hidden"
+                                        style="position: absolute; top: 100%; right: 0; min-width: 180px; margin-top: 0.5rem; z-index: 100; background: var(--surface, #1e1e2e); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.8); padding: 0.5rem; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                                        <div
+                                            style="padding: 0.5rem 1rem; font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                            Сортировка папок</div>
+                                        <label class="dropdown-item"
+                                            style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; cursor: pointer; border-radius: 8px; transition: background 0.2s;">
+                                            <input type="radio" name="folder-sort" value="newest"
+                                                onchange="window.StudyModule.updateFolderSort('newest')"
+                                                style="accent-color: var(--primary); width: 16px; height: 16px; min-width: 16px; margin: 0; cursor: pointer;">
+                                            <span style="font-size: 0.9rem; line-height: 1;">Сначала новые</span>
+                                        </label>
+                                        <label class="dropdown-item"
+                                            style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; cursor: pointer; border-radius: 8px; transition: background 0.2s;">
+                                            <input type="radio" name="folder-sort" value="oldest"
+                                                onchange="window.StudyModule.updateFolderSort('oldest')"
+                                                style="accent-color: var(--primary); width: 16px; height: 16px; min-width: 16px; margin: 0; cursor: pointer;">
+                                            <span style="font-size: 0.9rem; line-height: 1;">Сначала старые</span>
+                                        </label>
+                                        <label class="dropdown-item"
+                                            style="display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; cursor: pointer; border-radius: 8px; transition: background 0.2s;">
+                                            <input type="radio" name="folder-sort" value="alphabet"
+                                                onchange="window.StudyModule.updateFolderSort('alphabet')"
+                                                style="accent-color: var(--primary); width: 16px; height: 16px; min-width: 16px; margin: 0; cursor: pointer;">
+                                            <span style="font-size: 0.9rem; line-height: 1;">По алфавиту</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Folder View Toggle (Mobile Only) -->
+                                <button class="btn-secondary small" id="folder-view-toggle" title="Вид сеткой"
+                                    style="display: none; padding: 0.5rem 0.8rem; height: 36px; align-items: center; justify-content: center;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <rect x="3" y="3" width="7" height="7"></rect>
+                                        <rect x="14" y="3" width="7" height="7"></rect>
+                                        <rect x="14" y="14" width="7" height="7"></rect>
+                                        <rect x="3" y="14" width="7" height="7"></rect>
+                                    </svg>
+                                </button>
+
+                                <button class="btn-secondary small" onclick="window.StudyModule.openFolderCreator()"
+                                    style="height: 36px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                    Создать папку
+                                </button>
+                            </div>
+                        </div>
+                        <div id="folders-list" class="groups-grid">
+                            <!-- Folders injected here -->
+                        </div>
+
+                        <!-- Idiom Folders Section -->
+                        <div class="idiom-folders-section" id="idiom-folders-section">
+                            <div class="section-title" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+                                <h2 style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #6366f1;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    Папки идиом
+                                </h2>
+                            </div>
+                            <div id="idiom-folders-list" class="groups-grid">
+                                <!-- Idiom Folders injected here -->
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+
+                <!-- 2.5 VIEW: GROUP EDIT/VIEW -->
+                <div id="view-group-edit" class="view-section hidden">
+
+                    <div style="max-width: 1000px; margin: 0 auto; width: 100%;">
+                        <!-- Group Meta Inputs -->
+                        <!-- Group Meta Inputs -->
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 1.5rem; margin-bottom: 0.5rem; position: relative;">
+                            <div class="edit-word-group" style="margin-bottom: 0.75rem;">
+                                <input type="text" id="group-name-input" class="edit-word-input" placeholder="Название папки" style="font-size: 1.1rem; font-weight: 600;">
+                            </div>
+                            <div class="edit-word-group" style="margin-bottom: 0;">
+                                <input type="text" id="group-desc-input" class="edit-word-input" placeholder="Описание (необязательно)">
+                            </div>
+                        </div>
+
+                        <!-- Folder Creation Action Bar (Toggle & Mobile Menu) -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; gap: 0.5rem; min-height: 48px;">
+                            
+                            <!-- Folder Mode Toggle Trigger (Button Style) -->
+                            <div id="folder-mode-toggle-container" class="">
+                                <div id="idiom-toggle-btn" class="idiom-mode-btn">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                    Идиомы
+                                </div>
+                                <input type="checkbox" id="folder-idiom-mode-toggle" class="hidden">
+                            </div>
+
+                            <!-- Mobile Folder Options Menu (Delete Folder) -->
+                            <div id="inline-delete-folder-container" class="hidden hide-on-desktop" style="position: relative; z-index: 20;">
+                                <button id="btn-folder-options-mobile" class="btn-icon" style="opacity: 0.6; padding: 0.5rem; display: inline-flex; align-items: center; justify-content: center; background: none; border: none;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="pointer-events: none;">
+                                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                                    </svg>
+                                </button>
+                                <!-- Popup Menu -->
+                                <div id="folder-options-popup" class="hidden" style="position: absolute; top: 110%; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 0.25rem; z-index: 50; min-width: 180px; box-shadow: 0 8px 32px rgba(0,0,0,0.6);">
+                                    <button id="btn-inline-delete-folder" style="width: 100%; border: none; background: transparent; border-radius: 8px; text-align: left; padding: 0.75rem 1rem; font-size: 0.95rem; color: #ff4b4b; display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                        Удалить папку
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Action Bar removed -->
+
+                        <!-- Word List Editor -->
+                        <div id="group-words-list" class="group-words-list">
+                            <!-- Dynamic Cards Injected Here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. VIEW: FLASHCARD SESSION (THE MAIN TARGET) -->
+                <div id="view-study-session" class="view-section hidden session-redesign">
+
+                    <!-- Top Bar: Back (Left), Mastered Count & Settings (Right) -->
+                    <div class="session-top-bar"
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                        <div class="session-actions-left" style="display: flex; gap: 0.75rem;">
+                            <button id="btn-exit-session" class="btn-square icon-btn" title="Выйти">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                                    <polyline points="12 19 5 12 12 5"></polyline>
+                                </svg>
+                            </button>
+                            <button id="btn-quick-toggle-audio" class="btn-square icon-btn active-toggle"
+                                title="Озвучка">
+                                <!-- Volume 2 Icon (Speaker) -->
+                                <svg id="icon-audio-on" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                                </svg>
+                                <!-- Volume X Icon (Muted) -->
+                                <svg id="icon-audio-off" class="hidden" xmlns="http://www.w3.org/2000/svg" width="20"
+                                    height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round">
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                    <line x1="23" y1="9" x2="17" y2="15"></line>
+                                    <line x1="17" y1="9" x2="23" y2="15"></line>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <div id="session-group-title"
+                            style="flex: 1; text-align: center; font-weight: 700; color: var(--text-main); font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 1rem;">
+                            Все слова
+                        </div>
+
+                        <div class="session-actions-right"
+                            style="display: flex; align-items: center; gap: 1rem; position: relative;">
+                            <!-- Perfect Info -->
+                            <div class="session-mastered-info" title="Идеально"
+                                style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.9rem;">
+                                <!-- Hollow Star Icon -->
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" class="text-secondary">
+                                    <polygon
+                                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                                    </polygon>
+                                </svg>
+                                <span id="session-mastered-count"
+                                    style="font-weight: 600; color: var(--text-main);">0</span>
+                            </div>
+
+                            <!-- Debug Timer (Temporary) -->
+                            <div id="debug-session-timer"
+                                style="font-family: monospace; font-size: 0.85rem; color: var(--secondary); background: rgba(var(--secondary-rgb), 0.1); padding: 2px 8px; border-radius: 6px; font-weight: 600;">
+                                00:00</div>
+
+                            <!-- Button remains in top bar -->
+                            <button id="btn-session-settings" class="btn-square icon-btn" title="Настройки">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Stats Row -->
+                    <div class="session-stats-row">
+                        <div class="stat-card-mini" id="stat-card-total">
+                            <span class="val" id="total-words-count">0</span>
+                            <span class="lbl" id="total-words-label">Всего слов</span>
+                        </div>
+                        <div class="stat-card-mini" id="stat-card-due">
+                            <span class="val" id="due-words-count">0</span>
+                            <span class="lbl" id="due-words-label">К повторению</span>
+                        </div>
+                        <div class="stat-card-mini" id="stat-card-today">
+                            <span class="val" id="learned-today-count">0</span>
+                            <span class="lbl">Пройдено сегодня</span>
+                        </div>
+                    </div>
+
+                    <!-- Flashcard Area -->
+                    <div class="flashcard-container">
+                        <div class="flashcard" id="flashcard">
+                            <div class="card-face card-front">
+                                <span id="card-folder-name" class="card-folder-label"></span>
+                                <button class="btn-card-edit" id="btn-flashcard-edit" title="Редактировать">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                    </svg>
+                                </button>
+                                <h1 id="card-word">Wort</h1>
+                                <p id="card-info1" class="sub-text">Info 1</p>
+                                <p id="card-info2" class="sub-text">Info 2</p>
+                                <div class="examples" id="card-examples"></div>
+                                <div id="card-deleted-overlay" class="hidden"
+                                    style="position: absolute; inset: 0; background: var(--bg-card); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; border-radius: 20px; text-align: center; padding: 2rem; pointer-events: auto;">
+                                    <p
+                                        style="margin-bottom: 2rem; color: #ffffff; font-size: 1.1rem; font-weight: 500;">
+                                        Вы удалили это слово из словаря.</p>
+                                    <div
+                                        style="display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 240px;">
+                                        <button id="btn-restore-word" class="btn-primary"
+                                            style="padding: 0.9rem; font-size: 0.9rem; width: 100%; cursor: pointer; background: #ffffff; color: #000000; font-weight: 600; border-radius: 40px; border: none;">Восстановить
+                                            слово</button>
+                                        <button id="btn-skip-deleted" class="btn-secondary"
+                                            style="padding: 0.9rem; font-size: 0.9rem; width: 100%; cursor: pointer; background: rgba(255,255,255,0.1); color: #ffffff; border-radius: 40px; border: 1px solid rgba(255,255,255,0.2);">Перейти
+                                            к следующему</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-face card-back">
+                                <h2 id="card-translation">Слово</h2>
+                                <p id="card-meaning" class="card-meaning-text"></p>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="session-controls">
+                        <!-- btn-reveal removed -->
+                        <div id="rating-buttons" class="rating-grid-2 hidden">
+                            <!-- Row 1 -->
+                            <button class="btn-rate rate-btn-1" data-rating="1">Не помню<br><span>1
+                                    час</span></button>
+                            <button class="btn-rate rate-btn-2" data-rating="2">С трудом<br><span>1 день</span></button>
+                            <!-- Row 2 -->
+                            <button class="btn-rate rate-btn-3" data-rating="3">Частично<br><span>4 дня</span></button>
+                            <button class="btn-rate rate-btn-4" data-rating="4">Почти<br><span>7 дней</span></button>
+                            <!-- Row 3 -->
+                            <button class="btn-rate rate-btn-5" data-rating="5" style="position: relative;">
+                                Помню<br><span>12 дней</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    style="position: absolute; top: 8px; right: 8px; color: currentColor; opacity: 0.6;">
+                                    <polygon
+                                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                                    </polygon>
+                                </svg>
+                            </button>
+                            <button class="btn-rate rate-btn-6" data-rating="6" style="position: relative;">
+                                Отлично<br><span>21 день</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    style="position: absolute; top: 8px; right: 8px; color: currentColor; opacity: 0.6;">
+                                    <polygon
+                                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                                    </polygon>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar (Fixed Bottom or just below) -->
+                    <div class="session-progress-container">
+                        <div class="progress-track-thin">
+                            <div class="progress-fill-thin" id="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3.5 VIEW: EXAM (NEW DEDICATED VIEW) -->
+                <div id="view-exam" class="view-section hidden" style="padding-bottom: 120px; margin-top: -90px;">
+
+                    <!-- Main Container constrained to card width -->
+                    <div
+                        style="width: 100%; max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; flex: 1;">
+
+                        <!-- Header (Compact & Aligned) -->
+                        <div
+                            style="position: sticky; top: 0; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 100; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2.5rem;">
+                            <button id="btn-exit-exam" class="btn-square icon-btn" title="Выйти"
+                                style="background: transparent; border: none; color: var(--text-muted); padding: 0.5rem; margin-left: -0.5rem;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                                    <polyline points="12 19 5 12 12 5"></polyline>
+                                </svg>
+                            </button>
+
+                            <!-- Title & Progress -->
+                            <div style="text-align: center;">
+                                <h3
+                                    style="margin: 0 0 0.25rem 0; font-size: 0.9rem; font-weight: 600; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Экзамен</h3>
+                                <p id="exam-progress-text"
+                                    style="margin: 0; font-size: 0.75rem; color: var(--text-muted); opacity: 0.7;">
+                                    Слово 1 из 10</p>
+                            </div>
+
+                            <button id="btn-exam-help" class="btn-square icon-btn" title="Инструкции"
+                                style="background: transparent; border: none; color: var(--text-muted); padding: 0.5rem; margin-right: -0.5rem;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <path d="M12 16v-4"></path>
+                                    <path d="M12 8h.01"></path>
+                                </svg>
+                            </button>
+
+
+                        </div>
+
+                        <!-- Exam Content (Pushed to Top) -->
+                        <div style="padding: 3.5rem 0 1rem 0; display: flex; flex-direction: column;">
+
+                            <!-- Russian Word (Question) -->
+                            <h1 id="exam-question-text"
+                                style="font-size: 1.4rem; font-weight: 700; color: var(--text-main); margin: 0 0 0.5rem 0; line-height: 1.3; text-align: left; word-break: break-word;">
+                                яблоко
+                            </h1>
+
+                            <!-- Additional Info -->
+                            <p id="exam-question-info"
+                                style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 1.5rem 0; min-height: 1.2rem;">
+                            </p>
+
+                            <!-- Input Field (TextArea) -->
+                            <div style="margin-bottom: 1.5rem; position: relative;">
+                                <textarea id="exam-input" rows="1" placeholder="Введите перевод..."
+                                    style="width: 100%; padding: 0.5rem 0; border: none; border-bottom: 1px solid var(--border); background: transparent; color: var(--text-main); font-size: 1.1rem; text-align: left; font-weight: 400; outline: none; transition: border-color 0.2s; border-radius: 0; resize: none; overflow: hidden; font-family: inherit; line-height: 1.5; box-shadow: none;"></textarea>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div style="display: flex; gap: 0.75rem; margin-bottom: 1.5rem;">
+                                <button id="btn-exam-check" class="btn-primary"
+                                    style="flex: 1; padding: 0.9rem; font-size: 1rem; font-weight: 600; border-radius: 30px;">
+                                    Проверить
+                                </button>
+                                <button id="btn-exam-override" class="btn-secondary hidden"
+                                    style="flex: 1; padding: 0.9rem; font-size: 0.9rem; font-weight: 600; border-radius: 30px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+                                    Я был прав
+                                </button>
+                                <button id="btn-exam-undo-override" class="btn-secondary hidden"
+                                    style="flex: 1; padding: 0.9rem; font-size: 0.9rem; font-weight: 600; border-radius: 30px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5;">
+                                    Я был не прав
+                                </button>
+                                <button id="btn-exam-next" class="btn-secondary hidden"
+                                    style="flex: 1; padding: 0.9rem; font-size: 1rem; font-weight: 600; border-radius: 30px;">
+                                    Далее
+                                </button>
+                            </div>
+
+                            <!-- Feedback -->
+                            <div id="exam-feedback" class="hidden"
+                                style="margin-bottom: 1.5rem; padding: 1rem; border-radius: 30px; font-weight: 500; text-align: left; font-size: 0.95rem;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- 3.6 VIEW: EXAM HELP (DEDICATED FULL SCREEN) -->
+                <div id="view-exam-help" class="view-section hidden" style="padding-bottom: 40px; margin-top: -90px;">
+                    <div style="width: 100%; max-width: 500px; margin: 0 auto; display: flex; flex-direction: column;">
+
+                        <!-- Header -->
+                        <div
+                            style="position: sticky; top: 0; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 100; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                            <button id="btn-back-from-help" class="btn-square icon-btn" title="Назад"
+                                style="background: transparent; border: none; color: var(--text-muted); padding: 0.5rem; margin-left: -0.5rem;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                                    <polyline points="12 19 5 12 12 5"></polyline>
+                                </svg>
+                            </button>
+                            <h3
+                                style="margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;">
+                                Инструктаж</h3>
+                            <div style="width: 40px;"></div>
+                        </div>
+
+                        <!-- Content -->
+                        <div
+                            style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding-top: 3.5rem;">
+
+                            <div class="guide-section">
+                                <h2>
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                                        <polyline points="10 9 9 9 8 9"></polyline>
+                                    </svg>
+                                    Правила Экзамена
+                                </h2>
+                                <p>На экзамене проверяется знание основной формы слова и всех его форм (для глаголов).
+                                </p>
+
+                                <div style="margin-bottom: 20px;">
+                                    <h4 style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 8px;">Основные
+                                        правила:
+                                    </h4>
+                                    <ul class="guide-list">
+                                        <li><span>Одна строка</span> <span>Все слова пишутся подряд</span></li>
+                                        <li><span>Артикли</span> <span>Первый артикль обязателен</span></li>
+                                        <li><span>Порядок</span> <span>Внутри форм порядок важен</span></li>
+                                    </ul>
+                                </div>
+
+                                <div style="margin-bottom: 20px;">
+                                    <h4 style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 8px;">
+                                        Подсказки:</h4>
+                                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--text-muted);">
+                                            <code style="color: var(--text-main); font-size: 0.8rem;">________</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Введите основное немецкое слово (инфинитив).</div>
+                                        </div>
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--secondary);">
+                                            <code
+                                                style="color: var(--text-main); font-size: 0.8rem;">Präsens, Präteritum, Partizip II</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Введите все три формы глагола. Порядок форм не критичен.</div>
+                                        </div>
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--text-muted);">
+                                            <code style="color: var(--text-main); font-size: 0.8rem;">(plural)</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Обязательно записать множественное число слова (через запятую или
+                                                пробел).</div>
+                                        </div>
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--text-muted);">
+                                            <code style="color: var(--text-main); font-size: 0.8rem;">(жен. р.)</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Слово заканчивается на <b>-in</b> (напр. Lehrerin). Обязательно указать
+                                                форму женского рода.</div>
+                                        </div>
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--text-muted);">
+                                            <code
+                                                style="color: var(--text-main); font-size: 0.8rem;">Введите N слов(а)</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Фраза состоит из нескольких слов (напр. "ein paar", "an sein"). Артикли
+                                                и слова в скобках не учитываются.</div>
+                                        </div>
+                                        <div
+                                            style="background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; border-left: 3px solid var(--text-muted);">
+                                            <code
+                                                style="color: var(--text-main); font-size: 0.8rem;">ввод множественого числа не обязателен</code>
+                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                                                Слова типа "Restaurierung, -en". Можно ввести только ед. число, слово с
+                                                окончанием или полную форму.</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 style="font-size: 0.9rem; color: var(--text-main); margin-bottom: 8px;">Цветовые
+                                        индикаторы:</h4>
+                                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                                        <!-- Green -->
+                                        <div
+                                            style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(16, 185, 129, 0.03); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.05);">
+                                            <div style="position: relative; width: 10px; height: 10px; flex-shrink: 0;">
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;">
+                                                </div>
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #55efc4; opacity: 0.8;">
+                                                </div>
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-main);"><span
+                                                    style="color: #10b981; font-weight: 600;">Зеленый</span> &mdash;
+                                                абсолютно
+                                                точный ответ. <span
+                                                    style="color: #10b981; font-weight: 700;">+1б</span></span>
+                                        </div>
+                                        <!-- Blue -->
+                                        <div
+                                            style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(59, 130, 246, 0.03); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.05);">
+                                            <div style="position: relative; width: 10px; height: 10px; flex-shrink: 0;">
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 6px #3b82f6;">
+                                                </div>
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #74b9ff; opacity: 0.8;">
+                                                </div>
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-main);"><span
+                                                    style="color: #3b82f6; font-weight: 600;">Синий</span> &mdash;
+                                                верно, но форме глагола с вариантом ответа ist/hat указан только один из
+                                                вариантов. <span
+                                                    style="color: #3b82f6; font-weight: 700;">+1б</span></span>
+                                        </div>
+                                        <!-- Purple -->
+                                        <div
+                                            style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(139, 92, 246, 0.03); border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.05);">
+                                            <div style="position: relative; width: 10px; height: 10px; flex-shrink: 0;">
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; box-shadow: 0 0 6px #8b5cf6;">
+                                                </div>
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #a29bfe; opacity: 0.8;">
+                                                </div>
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-main);"><span
+                                                    style="color: #8b5cf6; font-weight: 600;">Фиолетовый</span> &mdash;
+                                                ошибка в
+                                                артикле или в порядке слов. <span
+                                                    style="color: #8b5cf6; font-weight: 700;">-1.5б</span></span>
+                                        </div>
+                                        <!-- Red -->
+                                        <div
+                                            style="display: flex; align-items: center; gap: 12px; padding: 10px; background: rgba(239, 68, 68, 0.03); border-radius: 12px; border: 1px solid rgba(239, 68, 68, 0.05);">
+                                            <div style="position: relative; width: 10px; height: 10px; flex-shrink: 0;">
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 6px #ef4444;">
+                                                </div>
+                                                <div
+                                                    style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #ff7675; opacity: 0.8;">
+                                                </div>
+                                            </div>
+                                            <span style="font-size: 0.75rem; color: var(--text-main);"><span
+                                                    style="color: #ef4444; font-weight: 600;">Красный</span> &mdash;
+                                                орфографическая ошибка или неполный ответ. <span
+                                                    style="color: #ef4444; font-weight: 700;">-3б</span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. VIEW: IMPORT -->
+                <div id="view-import" class="view-section hidden">
+                    <div style="max-width: 1000px; margin: 0 auto; width: 100%;">
+                        <div class="section-title" style="margin-bottom: 2rem;">
+                            <h2>Импорт слов</h2>
+                        </div>
+
+                        <!-- Drop Zone -->
+                        <div class="import-drop-zone desktop-only" id="drop-zone"
+                            onclick="document.getElementById('excel-file-input').click()"
+                            style="margin-top: 0; margin-bottom: 3rem;">
+                            <div
+                                style="width: 80px; height: 80px; background: rgba(99, 102, 241, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem auto; color: var(--primary);">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="17 8 12 3 7 8"></polyline>
+                                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                                </svg>
+                            </div>
+                            <h3 style="font-size: 1.25rem; margin-bottom: 0.5rem; color: var(--text-main);">Нажмите для
+                                выбора файла</h3>
+                            <p style="color: var(--text-muted); margin-bottom: 2rem;">или перетащите таблицу (.xlsx) в
+                                эту область</p>
+
+                            <input type="file" id="excel-file-input" accept=".xlsx, .xls" style="display: none;">
+
+                            <div id="import-status-desktop"
+                                style="margin-top: 1.5rem; min-height: 24px; font-weight: 500;">
+                            </div>
+                        </div>
+
+                        <!-- Mobile Version -->
+                        <div class="import-panel mobile-only"
+                            onclick="document.getElementById('excel-file-input').click()">
+                            <div class="import-panel-content">
+                                <div class="import-icon-box">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                </div>
+                                <div class="import-text-box">
+                                    <h3 style="margin:0; font-size: 1.1rem; color: var(--text-main);">Выбрать файл</h3>
+                                    <p style="color: var(--text-muted); margin: 0.2rem 0 0 0; font-size: 0.85rem;">
+                                        Нажмите, чтобы загрузить .xlsx</p>
+                                </div>
+                            </div>
+                            <div id="import-status-mobile"
+                                style="margin-top: 1rem; min-height: 20px; font-size: 0.9rem;"></div>
+                        </div>
+
+                        <div id="import-status" class="hidden"></div>
+
+                        <!-- Instruction Section (Bottom) -->
+                        <div style="margin-top: 2rem;">
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                                <!-- Excel Icon -->
+                                <div
+                                    style="width: 32px; height: 32px; background: rgba(var(--accent-2-rgb, 16, 185, 129), 0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--accent-2);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                                        <polyline points="10 9 9 9 8 9"></polyline>
+                                    </svg>
+                                </div>
+                                <h3 style="font-size: 1.1rem; margin: 0; color: var(--text-main);">Структура Excel файла
+                                </h3>
+                            </div>
+
+                            <div class="import-guide-card">
+                                <div class="import-guide-padding">
+                                    <p class="import-guide-text">
+                                        Данные должны располагаться в колонках A-J. Заголовки необязательны.
+                                    </p>
+
+                                    <!-- Desktop Table -->
+                                    <div class="import-guide-table-wrapper desktop-only">
+                                        <div style="width: 100%; overflow-x: auto;">
+                                            <table class="import-guide-table" style="width: 100%;">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 50px;">A</th>
+                                                        <th>B: Активное</th>
+                                                        <th>C: Слово</th>
+                                                        <th>D: Перевод</th>
+                                                        <th>E: Формы глагола</th>
+                                                        <th>F: Дополнительно</th>
+                                                        <th>G: Пример 1</th>
+                                                        <th>H: Пример 2</th>
+                                                        <th>I: Папка</th>
+                                                        <th>J: Идеально</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style="color: var(--text-muted);">101</td>
+                                                        <td style="color: var(--secondary);">yes</td>
+                                                        <td style="color: var(--text-main); font-weight: 500;">Apfel
+                                                        </td>
+                                                        <td>Яблоко</td>
+                                                        <td><i>сущ.</i></td>
+                                                        <td><i>м.р.</i></td>
+                                                        <td style="color: var(--text-main);">Ich esse einen Apfel.</td>
+                                                        <td>-</td>
+                                                        <td style="color: var(--secondary);">Obst</td>
+                                                        <td style="color: var(--secondary);">true</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td style="color: var(--text-muted);">102</td>
+                                                        <td style="color: var(--secondary);">yes</td>
+                                                        <td style="color: var(--text-main); font-weight: 500;">Buch</td>
+                                                        <td>Книга</td>
+                                                        <td><i>сущ.</i></td>
+                                                        <td><i>ср.р.</i></td>
+                                                        <td style="color: var(--text-main);">Das Buch ist interessant.
+                                                        </td>
+                                                        <td>Ich lese ein Buch.</td>
+                                                        <td style="color: var(--secondary);">Medien</td>
+                                                        <td style="color: var(--secondary);">false</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <!-- Mobile Card List -->
+                                    <div class="import-guide-mobile-list mobile-only">
+                                        <div class="guide-mobile-item"><span>A</span> ID (необязательно)</div>
+                                        <div class="guide-mobile-item"><span>B</span> Активное слово (yes/no)</div>
+                                        <div class="guide-mobile-item"><span>C</span> Немецкое слово</div>
+                                        <div class="guide-mobile-item"><span>D</span> Перевод</div>
+                                        <div class="guide-mobile-item"><span>E</span> Формы глагола</div>
+                                        <div class="guide-mobile-item"><span>F</span> Дополнительно</div>
+                                        <div class="guide-mobile-item"><span>G</span> Пример 1</div>
+                                        <div class="guide-mobile-item"><span>H</span> Пример 2</div>
+                                        <div class="guide-mobile-item"><span>I</span> Название папки</div>
+                                        <div class="guide-mobile-item"><span>J</span> Идеально (true/false)</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- New: Idioms Structure Guide -->
+                            <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: 2rem; margin-bottom: 1rem;">
+                                <!-- Excel Icon -->
+                                <div
+                                    style="width: 32px; height: 32px; background: rgba(var(--primary-rgb, 99, 102, 241), 0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                        <polyline points="14 2 14 8 20 8"></polyline>
+                                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                                        <polyline points="10 9 9 9 8 9"></polyline>
+                                    </svg>
+                                </div>
+                                <h3 style="font-size: 1.1rem; margin: 0; color: var(--text-main);">Структура Excel для идиом</h3>
+                            </div>
+
+                            <div class="import-guide-card">
+                                <div class="import-guide-padding">
+                                    <p class="import-guide-text">
+                                        Для идиом используйте колонки A-G. Система автоматически определит тип данных.
+                                    </p>
+
+                                    <!-- Desktop Table -->
+                                    <div class="import-guide-table-wrapper desktop-only">
+                                        <div style="width: 100%; overflow-x: auto;">
+                                            <table class="import-guide-table" style="width: 100%;">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="width: 50px;">A</th>
+                                                        <th>B: Идиома</th>
+                                                        <th>C: Перевод</th>
+                                                        <th>D: Смысловой перевод</th>
+                                                        <th>E: Дополнительно</th>
+                                                        <th>F: Пример</th>
+                                                        <th>G: Папка</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style="color: var(--text-muted);">100001</td>
+                                                        <td style="color: var(--text-main); font-weight: 500;">Auf Achse sein</td>
+                                                        <td>Быть в разъездах</td>
+                                                        <td>Быть очень занятым, путешествовать</td>
+                                                        <td><i>Разговорное</i></td>
+                                                        <td style="color: var(--text-main);">Er ist ständig auf Achse.</td>
+                                                        <td style="color: var(--secondary);">Путешествия</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <!-- Mobile Card List for Idioms -->
+                                    <div class="import-guide-mobile-list mobile-only">
+                                        <div class="guide-mobile-item"><span>A</span> ID (необязательно)</div>
+                                        <div class="guide-mobile-item"><span>B</span> Идиома</div>
+                                        <div class="guide-mobile-item"><span>C</span> Перевод</div>
+                                        <div class="guide-mobile-item"><span>D</span> Смысловой перевод</div>
+                                        <div class="guide-mobile-item"><span>E</span> Дополнительно</div>
+                                        <div class="guide-mobile-item"><span>F</span> Пример</div>
+                                        <div class="guide-mobile-item"><span>G</span> Название папки</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="view-words" class="view-section hidden">
+                    <div id="dict-main-container">
+                        <!-- Dictionary Tab Bar: Words / Idioms -->
+                        <div class="dict-tab-bar">
+                            <button id="dict-tab-words" class="dict-tab-btn active">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                                Слова
+                                <span class="tab-count" id="dict-tab-words-count">0</span>
+                            </button>
+                            <button id="dict-tab-idioms" class="dict-tab-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                                Идиомы
+                                <span class="tab-count" id="dict-tab-idioms-count">0</span>
+                            </button>
+                        </div>
+                        <!-- Dictionary Toolbar -->
+                        <div class="dict-toolbar"
+                            style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; position: relative;">
+
+                            <!-- 1. Search -->
+                            <div class="dict-search-wrapper"
+                                style="flex: 0 1 550px; min-width: 250px; position: relative;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                                <input type="text" id="dict-search" placeholder="Поиск..."
+                                    style="width: 100%; padding-left: 2.5rem; padding-right: 1rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); height: 42px; outline: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                            </div>
+
+                            <!-- Mobile Toggle Button (Visible only on mobile via CSS) -->
+                            <button id="dict-mobile-filter-toggle" class="mobile-only-btn"
+                                style="display: none; height: 42px; width: 42px; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); cursor: pointer;">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <line x1="4" y1="21" x2="4" y2="14"></line>
+                                    <line x1="4" y1="10" x2="4" y2="3"></line>
+                                    <line x1="12" y1="21" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12" y2="3"></line>
+                                    <line x1="20" y1="21" x2="20" y2="16"></line>
+                                    <line x1="20" y1="12" x2="20" y2="3"></line>
+                                    <line x1="1" y1="14" x2="7" y2="14"></line>
+                                    <line x1="9" y1="8" x2="15" y2="8"></line>
+                                    <line x1="17" y1="16" x2="23" y2="16"></line>
+                                </svg>
+                            </button>
+
+                            <!-- Filters Group (Collapsible side-panel on mobile) -->
+                            <div id="dict-filters-group" class="dict-filters-group"
+                                style="display: flex; gap: 1rem; flex: 1; min-width: 300px;">
+
+                                <!-- Mobile Close Button -->
+                                <button id="dict-mobile-filter-close" class="mobile-only-btn"
+                                    style="width: 100%; justify-content: flex-end; background: none; border: none; padding: 0; color: var(--text-muted); cursor: pointer;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+
+
+
+                                <!-- Column Filter -->
+                                <div class="filter-group-wrapper"
+                                    style="flex: 1; min-width: 140px; position: relative;">
+                                    <span class="mobile-filter-title">Отображение</span>
+                                    <button id="dict-filter-columns-btn"
+                                        style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); height: 42px; cursor: pointer; text-align: left;">
+                                        <span id="columns-btn-label">Столбцы</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <path
+                                                d="M9 3H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z">
+                                            </path>
+                                            <path
+                                                d="M19 3h-4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z">
+                                            </path>
+                                            <path
+                                                d="M9 13H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2z">
+                                            </path>
+                                            <path
+                                                d="M19 13h-4a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2z">
+                                            </path>
+                                        </svg>
+                                    </button>
+                                    <div id="dict-filter-columns-menu" class="hidden"
+                                        style="position: absolute; top: 110%; left: 0; width: 100%; min-width: 200px; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 0.5rem; z-index: 1000; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; gap: 2px; max-height: 400px; overflow-y: auto;">
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="id"
+                                                checked onchange="toggleColumn('id')"><span
+                                                class="checkmark"></span><span>ID</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="active"
+                                                checked onchange="toggleColumn('active')"><span
+                                                class="checkmark"></span><span>Актив</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="is_ideal"
+                                                checked onchange="toggleColumn('is_ideal')"><span
+                                                class="checkmark"></span><span>Идеально</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="word"
+                                                checked onchange="toggleColumn('word')"><span
+                                                class="checkmark"></span><span>Немецкое слово</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="translation" checked onchange="toggleColumn('translation')"><span
+                                                class="checkmark"></span><span>Перевод</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="info1"
+                                                checked onchange="toggleColumn('info1')"><span
+                                                class="checkmark"></span><span>Формы глагола</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="info2"
+                                                checked onchange="toggleColumn('info2')"><span
+                                                class="checkmark"></span><span>Дополнительно</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="ex1"
+                                                checked onchange="toggleColumn('ex1')"><span
+                                                class="checkmark"></span><span>Пример
+                                                1</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="ex2"
+                                                checked onchange="toggleColumn('ex2')"><span
+                                                class="checkmark"></span><span>Пример
+                                                2</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="interval"
+                                                checked onchange="toggleColumn('interval')"><span
+                                                class="checkmark"></span><span>Интервал</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="folder"
+                                                checked onchange="toggleColumn('folder')"><span
+                                                class="checkmark"></span><span>Папка</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="nextDate"
+                                                checked onchange="toggleColumn('nextDate')"><span
+                                                class="checkmark"></span><span>След. повтор</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="frequency" checked onchange="toggleColumn('frequency')"><span
+                                                class="checkmark"></span><span>Употребительность</span></label>
+                                    </div>
+                                    
+                                    <!-- IDIOMS COLUMNS MENU -->
+                                    <div id="dict-filter-idioms-columns-menu" class="hidden"
+                                        style="position: absolute; top: 110%; left: 0; width: 100%; min-width: 200px; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 0.5rem; z-index: 1000; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; gap: 2px; max-height: 400px; overflow-y: auto;">
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="id"
+                                                checked onchange="toggleIdiomColumn('id')"><span
+                                                class="checkmark"></span><span>ID</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="ideal"
+                                                checked onchange="toggleIdiomColumn('ideal')"><span
+                                                class="checkmark"></span><span>Идеально</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="idiom"
+                                                checked onchange="toggleIdiomColumn('idiom')"><span
+                                                class="checkmark"></span><span>Идиома</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="translation" checked onchange="toggleIdiomColumn('translation')"><span
+                                                class="checkmark"></span><span>Перевод</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="meaning"
+                                                checked onchange="toggleIdiomColumn('meaning')"><span
+                                                class="checkmark"></span><span>Смысловой перевод</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="info"
+                                                checked onchange="toggleIdiomColumn('info')"><span
+                                                class="checkmark"></span><span>Дополнительно</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="example"
+                                                checked onchange="toggleIdiomColumn('example')"><span
+                                                class="checkmark"></span><span>Пример</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="folder"
+                                                checked onchange="toggleIdiomColumn('folder')"><span
+                                                class="checkmark"></span><span>Папка</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="interval"
+                                                checked onchange="toggleIdiomColumn('interval')"><span
+                                                class="checkmark"></span><span>Интервал</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="nextDate"
+                                                checked onchange="toggleIdiomColumn('nextDate')"><span
+                                                class="checkmark"></span><span>След. повтор</span></label>
+                                    </div>
+                                </div>
+
+                                <!-- Interval Filter -->
+                                <div class="filter-group-wrapper"
+                                    style="flex: 1; min-width: 140px; position: relative;">
+                                    <span class="mobile-filter-title">Интервалы</span>
+                                    <button id="dict-filter-interval-btn"
+                                        style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); height: 42px; cursor: pointer; text-align: left;">
+                                        <span id="interval-btn-label">Интервалы</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </button>
+                                    <div id="dict-filter-interval-menu" class="hidden"
+                                        style="position: absolute; top: 110%; left: 0; width: 100%; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 0.5rem; z-index: 1000; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; gap: 2px;">
+                                        <label class="custom-checkbox"><input type="checkbox" value="all" checked><span
+                                                class="checkmark"></span><span>Все</span></label>
+                                        <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0;">
+                                        </div>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="new"><span class="checkmark"></span><span>0 дн
+                                                (Новые/К повтору)</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="0"><span
+                                                class="checkmark"></span><span>1 час</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="1"><span
+                                                class="checkmark"></span><span>1 дн</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="4"><span
+                                                class="checkmark"></span><span>4 дн</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="7"><span
+                                                class="checkmark"></span><span>7 дн</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="12"><span
+                                                class="checkmark"></span><span>12 дн</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="21"><span
+                                                class="checkmark"></span><span>21 дн</span></label>
+                                    </div>
+                                </div>
+
+                                <!-- Score Filter -->
+                                <div class="filter-group-wrapper"
+                                    style="flex: 1; min-width: 120px; position: relative;">
+                                    <span class="mobile-filter-title">Баллы</span>
+                                    <button id="dict-filter-score-btn"
+                                        style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); height: 42px; cursor: pointer; text-align: left;">
+                                        <span id="score-btn-label">Баллы</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </button>
+                                    <div id="dict-filter-score-menu" class="hidden"
+                                        style="position: absolute; top: 110%; left: 0; width: 100%; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 0.5rem; z-index: 1000; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; gap: 2px;">
+                                        <label class="custom-checkbox"><input type="checkbox" value="all" checked><span
+                                                class="checkmark"></span><span>Все</span></label>
+                                        <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 4px 0;">
+                                        </div>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="0"><span
+                                                class="checkmark"></span><span>0 (Новые)</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="1.5"><span class="checkmark"></span><span>1,5</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="3"><span
+                                                class="checkmark"></span><span>3</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="4.5"><span class="checkmark"></span><span>4,5</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="6"><span
+                                                class="checkmark"></span><span>6</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox"
+                                                value="7.5"><span class="checkmark"></span><span>7,5</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="9"><span
+                                                class="checkmark"></span><span>9</span></label>
+                                        <label class="custom-checkbox secondary"><input type="checkbox" value="10"><span
+                                                class="checkmark"></span><span>10 (Актив)</span></label>
+                                    </div>
+                                </div>
+
+                                <!-- Sorting Filter -->
+                                <div class="filter-group-wrapper"
+                                    style="flex: 1; min-width: 140px; position: relative;">
+                                    <span class="mobile-filter-title">Сортировка</span>
+                                    <button id="dict-filter-sort-btn"
+                                        style="width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); height: 42px; cursor: pointer; text-align: left;">
+                                        <span id="sort-btn-label">Сортировка</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                                            <polyline points="19 12 12 19 5 12"></polyline>
+                                        </svg>
+                                    </button>
+                                    <div id="dict-filter-sort-menu" class="hidden"
+                                        style="position: absolute; top: 110%; left: 0; width: 100%; background: rgba(30, 41, 59, 0.95); backdrop-filter: blur(24px); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 0.5rem; z-index: 1000; box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; gap: 2px;">
+
+                                        <label class="custom-checkbox secondary"
+                                            style="cursor: pointer; display: flex; align-items: center;">
+                                            <input type="radio" name="sort-order" value="newest"
+                                                onchange="setSortOrder('newest')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>Новые <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                                    style="margin-left: 2px; display: inline-block; vertical-align: middle;">
+                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                    <polyline points="19 12 12 19 5 12"></polyline>
+                                                </svg></span>
+                                        </label>
+
+                                        <label class="custom-checkbox secondary"
+                                            style="cursor: pointer; display: flex; align-items: center;">
+                                            <input type="radio" name="sort-order" value="oldest" checked
+                                                onchange="setSortOrder('oldest')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>Старые <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                                    style="margin-left: 2px; display: inline-block; vertical-align: middle;">
+                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                    <polyline points="19 12 12 19 5 12"></polyline>
+                                                </svg></span>
+                                        </label>
+
+                                        <label class="custom-checkbox secondary" style="cursor: pointer;">
+                                            <input type="radio" name="sort-order" value="alphabet"
+                                                onchange="setSortOrder('alphabet')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>По алфавиту</span>
+                                        </label>
+
+                                        <label class="custom-checkbox secondary" style="cursor: pointer;">
+                                            <input type="radio" name="sort-order" value="interval"
+                                                onchange="setSortOrder('interval')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>По интервалу</span>
+                                        </label>
+
+                                        <label class="custom-checkbox secondary" style="cursor: pointer;">
+                                            <input type="radio" name="sort-order" value="date_asc"
+                                                onchange="setSortOrder('date_asc')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>По дате <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                                    style="margin-left: 2px; display: inline-block; vertical-align: middle;">
+                                                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                                                    <polyline points="5 12 12 5 19 12"></polyline>
+                                                </svg></span>
+                                        </label>
+
+                                        <label class="custom-checkbox secondary" style="cursor: pointer;">
+                                            <input type="radio" name="sort-order" value="date_desc"
+                                                onchange="setSortOrder('date_desc')">
+                                            <span class="checkmark" style="border-radius: 50%;"></span>
+                                            <span>По дате <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                                    style="margin-left: 2px; display: inline-block; vertical-align: middle;">
+                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                    <polyline points="19 12 12 19 5 12"></polyline>
+                                                </svg></span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Duplicates Only Filter -->
+                                <div class="filter-group-wrapper" id="duplicates-filter-container">
+                                    <button id="dict-filter-duplicates-btn" onclick="toggleDuplicatesFilter()"
+                                        title="Показать дубликаты"
+                                        style="padding: 0 1rem; height: 42px; display: flex; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-main); font-family: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.2s ease;">
+                                        <span>Повторки</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <!-- Mobile Results Count (Simple) -->
+                                <div id="mobile-filter-results-count" class="mobile-only" style="text-align: center; font-size: 0.75rem; color: var(--text-muted); opacity: 0.5; width: 100%; margin-top: 0.5rem;">Найдено: 0</div>
+                            </div>
+
+
+
+                            <!-- Action Buttons -->
+                            <div class="dict-actions" style="display: flex; gap: 0.5rem; flex: 0 0 auto;">
+                                <!-- Add Word -->
+                                <!-- Add Word Button -->
+                                <button onclick="window.openEditModal(null)" title="Добавить слово"
+                                    style="height: 42px; width: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: none; background: #ffffff; color: #000000; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                </button>
+
+                                <!-- Add Idiom Button (hidden by default) -->
+                                <button id="btn-add-idiom" onclick="window.IdiomsUI.openIdiomEditModal()" title="Добавить идиому"
+                                    style="display: none; height: 42px; width: 42px; align-items: center; justify-content: center; border-radius: 10px; border: none; background: #ffffff; color: #000000; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                </button>
+
+                                <!-- Export Words Button -->
+                                <button class="btn-export" onclick="window.exportWordsToExcel()"
+                                    title="Скачать таблицу (Excel)"
+                                    style="height: 42px; width: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s ease;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                </button>
+
+                                <!-- Export Idioms Button (hidden by default) -->
+                                <button id="btn-export-idioms" onclick="window.IdiomsUI.exportIdioms()"
+                                    title="Скачать идиомы (Excel)"
+                                    style="display: none; height: 42px; width: 42px; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.2s ease;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="7 10 12 15 17 10"></polyline>
+                                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-container wide-table">
+                            <table id="words-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th class="has-tooltip">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                                stroke-linecap="round" stroke-linejoin="round"
+                                                title="Активный словарный запас">
+                                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                                            </svg>
+                                            <div class="tooltip-box">
+                                                <h4>Активные слова</h4>
+                                                <p>Это слова из вашего активного запаса. Числа — это баллы прогресса.
+                                                    Наберите <b>10 баллов</b>, чтобы слово стало считаться вашим
+                                                    активным
+                                                    словарным запасом и больше не попадалось вам при обучении. В режиме
+                                                    флеш карт можно набрать максимум 9 балов. Последний 10-тий бал можно
+                                                    получить только на экзамене.</p>
+                                                <ul class="tooltip-list">
+                                                    <li><span>Отлично</span> <span class="score-plus">+3,0</span></li>
+                                                    <li><span>Помню</span> <span class="score-plus">+1,5</span></li>
+                                                    <li><span>Почти</span> <span class="score-zero">0,0</span></li>
+                                                    <li><span>Частично</span> <span class="score-minus">-1,5</span></li>
+                                                    <li><span>С трудом</span> <span class="score-minus">-3,0</span></li>
+                                                    <li><span>Не помню</span> <span class="score-reset">Сброс</span>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </th>
+                                        <th style="text-align: center;" title="Идеально">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                                stroke-linecap="round" stroke-linejoin="round" title="Идеально">
+                                                <polygon
+                                                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
+                                                </polygon>
+                                            </svg>
+                                        </th>
+                                        <th>Немецкое слово</th>
+                                        <th>Перевод</th>
+                                        <th>Формы глагола</th>
+                                        <th>Дополнительно</th>
+                                        <th>Пример 1</th>
+                                        <th data-col="ex2" onclick="sortWords('ex2')">Пример 2</th>
+                                        <th data-col="folder" onclick="sortWords('folder')">Папка</th>
+                                        <th data-col="interval" onclick="sortWords('interval')">Интервал</th>
+                                        <th>След. повтор</th>
+                                        <th>Употребительность</th>
+                                        <th style="width: 70px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="words-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Idioms Table Container (hidden by default) -->
+                    <div id="idioms-table-container" class="table-container wide-table hidden">
+                        <table id="idioms-table">
+                                <thead>
+                                    <tr>
+                                        <th class="id-cell">#</th>
+                                        <th class="idiom-ideal-cell" style="text-align: center;" title="Идеально">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                                        </th>
+                                        <th class="idiom-text-cell">Идиома</th>
+                                        <th class="idiom-translation-cell">Перевод</th>
+                                        <th class="idiom-meaning-cell">Смысловой перевод</th>
+                                        <th class="idiom-info-cell">Дополнительно</th>
+                                        <th class="idiom-example-cell">Пример</th>
+                                        <th class="idiom-folder-cell">Папка</th>
+                                        <th class="idiom-interval-cell">Интервал</th>
+                                        <th class="idiom-date-cell">След. повтор</th>
+                                        <th class="idiom-freq-cell"></th> <!-- Placeholder for Употребительность -->
+                                        <th class="idiom-actions-cell"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="idioms-table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="dict-empty-state-view" class="hidden"></div>
+                </div>
+
+                <!-- NEW VIEW: EDIT WORD -->
+                <div id="view-word-edit" class="view-section hidden session-redesign">
+                    <div class="edit-view-container">
+
+                        <!-- Header -->
+                        <div class="sticky-edit-header">
+                            <!-- Left: Back Button -->
+                            <div style="flex: 1; display: flex; align-items: center;">
+                                <button id="btn-exit-word-edit" class="btn-square icon-btn" title="Выйти"
+                                    style="background: transparent; border: none; color: var(--text-muted); padding: 0.5rem; margin-left: -0.5rem;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                                        <polyline points="12 19 5 12 12 5"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <!-- Center: Title / ID -->
+                            <div style="text-align: center; flex: 2;">
+                                <h3 id="edit-word-title-text"
+                                    style="margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Слово</h3>
+                                <p id="edit-word-id-text"
+                                    style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--text-muted); opacity: 0.6; font-family: monospace;">
+                                    #17</p>
+                            </div>
+
+                            <!-- Right: Actions -->
+                            <div
+                                style="flex: 1; display: flex; justify-content: flex-end; align-items: center; gap: 0.2rem;">
+                                <button type="submit" form="edit-word-form" id="btn-save-word-edit-header"
+                                    class="btn-icon" title="Сохранить"
+                                    style="color: var(--text-main); padding: 0.5rem; background: transparent; border: none;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Form -->
+                        <form id="edit-word-form" style="display: flex; flex-direction: column; flex: 1;">
+                            <input type="hidden" id="nw-edit-id">
+
+                            <!-- Word -->
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-word" class="edit-word-input" required rows="1"
+                                    placeholder="Слово"></textarea>
+                            </div>
+
+                            <!-- Translation -->
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-translation" class="edit-word-input" required rows="1"
+                                    placeholder="Перевод"></textarea>
+                            </div>
+
+                            <!-- Forms -->
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-info1" class="edit-word-input" rows="1"
+                                    placeholder="Формы глагола"></textarea>
+                            </div>
+
+                            <!-- Extra -->
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-info2" class="edit-word-input" rows="1"
+                                    placeholder="Дополнительно"></textarea>
+                            </div>
+
+                            <!-- Examples -->
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-ex1" class="edit-word-input" rows="1"
+                                    placeholder="Пример 1"></textarea>
+                            </div>
+
+                            <div class="edit-word-group">
+                                <textarea id="nw-edit-ex2" class="edit-word-input" rows="1"
+                                    placeholder="Пример 2"></textarea>
+                            </div>
+
+                            <!-- Folder -->
+                            <div class="edit-word-group" style="margin-top: 1rem; opacity: 0.8;">
+                                <textarea id="nw-edit-folder" class="edit-word-input" rows="1"
+                                    placeholder="Папка"></textarea>
+                            </div>
+
+                        </form>
+                    </div>
+                </div>
+
+                <!-- VIEW: IDIOM EDIT -->
+                <div id="view-idiom-edit" class="view-section hidden session-redesign">
+                    <div class="edit-view-container">
+                        <!-- Custom Header -->
+                        <div class="sticky-edit-header">
+                            <!-- Left: Back -->
+                            <div style="flex: 1;">
+                                <button id="btn-exit-idiom-edit" class="btn-icon" title="Назад"
+                                    style="color: var(--text-main); padding: 0.5rem; background: transparent; border: none;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                                        <polyline points="12 19 5 12 12 5"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            <!-- Center: Title / ID -->
+                            <div style="text-align: center; flex: 2;">
+                                <h3 id="idiom-edit-title-text"
+                                    style="margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Идиома</h3>
+                                <p id="idiom-edit-id-text"
+                                    style="margin: 0.2rem 0 0 0; font-size: 0.75rem; color: var(--text-muted); opacity: 0.6; font-family: monospace;">
+                                    #ID</p>
+                            </div>
+
+                            <!-- Right: Actions -->
+                            <div
+                                style="flex: 1; display: flex; justify-content: flex-end; align-items: center; gap: 0.2rem;">
+                                <button type="submit" form="idiom-edit-form" id="btn-save-idiom-edit-header"
+                                    class="btn-icon" title="Сохранить"
+                                    style="color: var(--text-main); padding: 0.5rem; background: transparent; border: none;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Form -->
+                        <form id="idiom-edit-form" style="display: flex; flex-direction: column; flex: 1;">
+                            <input type="hidden" id="ie-id">
+
+                            <!-- Idiom -->
+                            <div class="edit-word-group">
+                                <textarea id="ie-idiom" class="edit-word-input" required rows="1"
+                                    placeholder="Идиома"></textarea>
+                            </div>
+
+                            <!-- Translation -->
+                            <div class="edit-word-group">
+                                <textarea id="ie-translation" class="edit-word-input" required rows="1"
+                                    placeholder="Перевод"></textarea>
+                            </div>
+
+                            <!-- Meaning -->
+                            <div class="edit-word-group">
+                                <textarea id="ie-meaning" class="edit-word-input" rows="1"
+                                    placeholder="Смысловой перевод"></textarea>
+                            </div>
+
+                            <!-- Info -->
+                            <div class="edit-word-group">
+                                <textarea id="ie-info" class="edit-word-input" rows="1"
+                                    placeholder="Дополнительно"></textarea>
+                            </div>
+
+                            <!-- Example -->
+                            <div class="edit-word-group">
+                                <textarea id="ie-example" class="edit-word-input" rows="1"
+                                    placeholder="Пример"></textarea>
+                            </div>
+
+                            <!-- Folder -->
+                            <div class="edit-word-group" style="margin-top: 1rem; opacity: 0.8;">
+                                <textarea id="ie-folder" class="edit-word-input" rows="1"
+                                    placeholder="Папка"></textarea>
+                            </div>
+
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 5. VIEW: SETTINGS -->
+                <div id="view-settings" class="view-section hidden">
+                    <div class="section-title">
+                        <h2>Настройки</h2>
+                    </div>
+
+                    <div class="settings-layout">
+                        <!-- Sidebar -->
+                        <div class="settings-sidebar">
+                            <button class="settings-tab active" data-target="settings-profile-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="12" cy="7" r="4"></circle>
+                                </svg>
+                                Профиль
+                            </button>
+                            <button class="settings-tab" data-target="settings-words-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                                </svg>
+                                Прогресс
+                            </button>
+                            <button class="settings-tab" data-target="settings-personalization-section">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="5"></circle>
+                                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                                </svg>
+                                Персонализация
+                            </button>
+                        </div>
+
+                        <!-- Content Area -->
+                        <div class="settings-content-area">
+                            <!-- Theme Section -->
+                            <div id="settings-personalization-section" class="settings-tab-content hidden">
+                                <div class="settings-group">
+                                    <h3>Внешний вид</h3>
+                                    <p class="settings-desc">Выберите тему оформления приложения.</p>
+
+                                    <div class="theme-selector" style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                                        <button class="theme-btn active" data-set-theme="dark">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                                            </svg>
+                                            Темная
+                                        </button>
+                                        <button class="theme-btn" data-set-theme="light">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="5"></circle>
+                                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                                            </svg>
+                                            Светлая
+                                        </button>
+                                    </div>
+
+                                    <!-- Color Scheme Selector -->
+                                    <div class="settings-group">
+                                        <h3>Цветовая схема</h3>
+                                        <p class="settings-desc">Выберите акцентные цвета для выбранной темы.</p>
+
+                                        <div class="color-scheme-selector"
+                                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                            <button class="color-scheme-btn" data-color-scheme="default">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #3b82f6, #10b981);">
+                                                    </div>
+                                                </div>
+                                                <span style="font-size: 0.85rem; font-weight: 500;">Синий-Зеленый</span>
+                                            </button>
+
+                                            <button class="color-scheme-btn" data-color-scheme="pink-yellow">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #ec4899, #f59e0b);">
+                                                    </div>
+                                                </div>
+                                                <span
+                                                    style="font-size: 0.85rem; font-weight: 500;">Розовый-Желтый</span>
+                                            </button>
+
+                                            <button class="color-scheme-btn" data-color-scheme="purple-orange">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #8b5cf6, #f97316);">
+                                                    </div>
+                                                </div>
+                                                <span
+                                                    style="font-size: 0.85rem; font-weight: 500;">Фиолетовый-Оранжевый</span>
+                                            </button>
+
+                                            <button class="color-scheme-btn" data-color-scheme="red-cyan">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #ef4444, #06b6d4);">
+                                                    </div>
+                                                </div>
+                                                <span
+                                                    style="font-size: 0.85rem; font-weight: 500;">Красный-Голубой</span>
+                                            </button>
+
+                                            <button class="color-scheme-btn" data-color-scheme="midnight-gold">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: linear-gradient(135deg, #1e1b4b, #facc15);">
+                                                    </div>
+                                                </div>
+                                                <span style="font-size: 0.85rem; font-weight: 500;">Индиго-Золото</span>
+                                            </button>
+
+                                            <button class="color-scheme-btn active" data-color-scheme="pure-black">
+                                                <div class="scheme-preview"
+                                                    style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                                    <div id="scheme-preview-pure-black"
+                                                        style="width: 40px; height: 40px; border-radius: 8px; background: #000000; border: 1px solid rgba(255,255,255,0.2);">
+                                                    </div>
+                                                </div>
+                                                <span id="scheme-text-pure-black"
+                                                    style="font-size: 0.85rem; font-weight: 500;">Чистый черный</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Trail Settings (New) -->
+                                    <div class="settings-group" style="margin-top: 2rem;">
+                                        <div
+                                            style="display: flex; justify-content: space-between; align-items: center;">
+                                            <div>
+                                                <h3>Шлейф за мышкой</h3>
+                                                <p class="settings-desc">Интерактивные частицы, следующие за курсором.
+                                                </p>
+                                            </div>
+                                            <button id="btn-toggle-trail" class="toggle-switch-btn active">
+                                                <div class="toggle-thumb"></div>
+                                            </button>
+                                        </div>
+
+                                        <div id="trail-type-selector"
+                                            style="margin-top: 1rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+                                            <button class="btn-secondary small trail-type-btn active"
+                                                data-trail-type="sparks">Искры</button>
+                                            <button class="btn-secondary small trail-type-btn"
+                                                data-trail-type="fluid">Антигравитация</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="settings-group">
+                                    <h3>Аватар</h3>
+                                    <p class="settings-desc">Загрузите изображение профиля (PNG, JPG, макс. 2МБ).</p>
+                                    <div class="avatar-upload-control"
+                                        style="display: flex; gap: 1rem; align-items: center;">
+                                        <div class="avatar-preview"
+                                            style="width: 64px; height: 64px; border-radius: 50%; overflow: hidden; background: var(--surface); border: 1px solid var(--border);">
+                                            <img id="settings-avatar-preview" src=""
+                                                style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                                            <div id="settings-avatar-placeholder"
+                                                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-muted);">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                                    <circle cx="12" cy="7" r="4"></circle>
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+                                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                            <button class="btn-secondary small"
+                                                onclick="document.getElementById('avatar-input').click()">
+                                                Загрузить фото
+                                            </button>
+                                            <button id="btn-delete-avatar" class="btn-danger-outline small"
+                                                style="border-radius: 99px; padding: 0.5rem 1rem; font-size: 0.8rem; display: none;">
+                                                Удалить фото
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Profile Section -->
+                            <div id="settings-profile-section" class="settings-tab-content">
+                                <div class="settings-group">
+                                    <h3>Управление профилем</h3>
+                                    <div class="form-group">
+                                        <label>Никнейм</label>
+                                        <div class="form-row">
+                                            <input type="text" id="settings-nickname"
+                                                placeholder="Введите новый никнейм">
+                                            <button class="btn-secondary small" id="btn-update-nickname"
+                                                disabled>Сохранить</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Электронная почта</label>
+                                        <div class="form-row">
+                                            <input type="email" id="settings-email" placeholder="Введите новую почту">
+                                            <button class="btn-secondary small" id="btn-update-email"
+                                                disabled>Сохранить</button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Пароль</label>
+                                        <div class="form-row">
+                                            <input type="password" id="settings-password"
+                                                placeholder="Введите новый пароль">
+                                            <button class="btn-secondary small" id="btn-update-password"
+                                                disabled>Сохранить</button>
+                                        </div>
+                                    </div>
+                                    <div class="danger-zone-mini">
+                                        <button class="btn-secondary small" id="logout-btn"
+                                            style="width:100%; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                                                <polyline points="16 17 21 12 16 7"></polyline>
+                                                <line x1="21" y1="12" x2="9" y2="12"></line>
+                                            </svg>
+                                            Выйти из учетной записи
+                                        </button>
+                                        <button class="btn-danger-outline small" id="btn-delete-account">Удалить
+                                            профиль</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Vocabulary Section -->
+                            <div id="settings-words-section" class="settings-tab-content hidden">
+                                <div class="settings-group">
+                                    <h3>Слова и прогресс</h3>
+                                    <p class="settings-desc">Управление вашей базой слов и достигнутыми результатами.
+                                    </p>
+                                    <div class="action-list">
+                                        <div class="settings-group"
+                                            style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
+                                            <h3>Режим обучения</h3>
+                                            <p class="settings-desc">Выберите интенсивность повторений. При смене режима
+                                                все интервалы будут пересчитаны.</p>
+
+                                            <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+                                                <button type="button" id="main-mode-btn-long" class="mode-btn active"
+                                                    onclick="window.StudyModule.selectMode('long')">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2.5" stroke-linecap="round"
+                                                        stroke-linejoin="round">
+                                                        <circle cx="12" cy="12" r="10"></circle>
+                                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                                    </svg>
+                                                    <span>Долгое
+                                                        изучение</span>
+                                                </button>
+                                                <button type="button" id="main-mode-btn-intensive" class="mode-btn"
+                                                    onclick="window.StudyModule.selectMode('intensive')">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                        stroke-width="2.5" stroke-linecap="round"
+                                                        stroke-linejoin="round">
+                                                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                                                    </svg>
+                                                    <span>Интенсивное</span>
+                                                </button>
+                                            </div>
+
+                                            <div id="mode-details"
+                                                style="background: rgba(255,255,255,0.03); border-radius: 20px; padding: 1.25rem; border: 1px solid var(--border);">
+                                                <!-- Table will be injected here by syncTogglesUI -->
+                                            </div>
+                                        </div>
+
+                                        <div style="margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem;">
+                                            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Словарь</div>
+                                            <button class="btn-danger-outline" id="btn-reset-session-progress">Сбросить прогресс слов</button>
+                                            <button class="btn-danger-outline" id="btn-clear-dictionary">Очистить словарь (удалить все слова)</button>
+                                         </div>
+
+                                         <div style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+                                            <div style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Идиомы</div>
+                                            <button class="btn-danger-outline" id="btn-reset-idioms-progress">Сбросить прогресс идиом</button>
+                                            <button class="btn-danger-outline" id="btn-clear-idioms">Очистить все идиомы</button>
+                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+
+        <!-- Edit Modal (Exact Group Editor Style - For Desktop) -->
+        <div id="edit-modal" class="modal-overlay hidden">
+            <div style="max-width: 1000px; width: 90vw; margin: 2rem auto; position: relative;">
+                <form id="edit-form">
+                    <input type="hidden" id="edit-id">
+
+                    <!-- Single Word Edit Card (copied from group editor) -->
+                    <div class="word-edit-card">
+                        <div class="card-header-mini">
+                            <span class="card-num">
+                                <span id="edit-modal-number">1</span>
+                                <span style="opacity: 0.3; font-size: 0.8em; margin-left: 10px; font-weight: normal;"
+                                    id="edit-modal-id">#17</span>
+                            </span>
+                            <div class="card-actions-mini">
+                                <button type="submit" class="btn-primary"
+                                    style="padding: 0.4rem 1rem; font-size: 0.85rem; border-radius: 999px; margin-right: 0.5rem;">Сохранить</button>
+                                <button type="button" id="delete-word-btn" class="btn-icon" title="Удалить"
+                                    style="color: #ef4444;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <path d="M3 6h18"></path>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                    </svg>
+                                </button>
+                                <button type="button" id="close-modal-btn" class="btn-icon text-muted" title="Закрыть">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-edit-content">
+                            <div class="term-col">
+                                <!-- MAIN TERM -->
+                                <div class="field-group">
+                                    <label>Слово</label>
+                                    <input type="text" class="input-stealth input-main" id="edit-word" required>
+                                </div>
+                                <!-- DEFINITION -->
+                                <div class="field-group">
+                                    <label>Определение</label>
+                                    <input type="text" class="input-stealth input-main" id="edit-translation" required>
+                                </div>
+                                <!-- FOLDER -->
+                                <div class="field-group" style="margin-top: 1rem; opacity: 0.6;">
+                                    <label>Папка</label>
+                                    <input type="text" class="input-stealth" id="edit-folder"
+                                        placeholder="Название папки...">
+                                </div>
+                            </div>
+
+                            <div class="def-col">
+                                <!-- EXAMPLES / EXTRA -->
+                                <div class="field-group">
+                                    <label>Формы глагола / Дополнительно</label>
+                                    <input type="text" class="input-stealth input-sub" id="edit-info1"
+                                        placeholder="Формы глагола">
+                                </div>
+                                <div class="field-group">
+                                    <input type="text" class="input-stealth input-sub" id="edit-info2"
+                                        placeholder="Дополнительно">
+                                </div>
+                                <div class="field-group">
+                                    <label>Примеры</label>
+                                    <input type="text" class="input-stealth input-sub" id="edit-ex1">
+                                </div>
+                                <div class="field-group">
+                                    <input type="text" class="input-stealth input-sub" id="edit-ex2">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+    </div>
+    <!-- Scripts moved to end of body -->
+    <!-- Session Settings Modal -->
+    <div id="session-settings-menu" class="modal-overlay hidden session-settings-modal">
+        <div class="session-settings-container">
+            <div class="word-edit-card session-settings-card">
+                <div class="card-header-mini session-settings-header">
+                    <span class="card-num">Настройки сессии</span>
+                    <div class="card-actions-mini">
+                        <button type="button" class="btn-icon mobile-only" onclick="window.StudyModule.applySettings()" 
+                            style="color: #ffffff; padding: 4px; display: none;" id="btn-save-settings-mobile">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                        </button>
+                        <button type="button" id="btn-close-settings" class="btn-icon text-muted" title="Закрыть">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-edit-content" style="padding: 1.2rem 2rem;">
+
+                    <!-- Section 1: Voice & Study -->
+                    <div class="setting-section">
+                        <div class="setting-section-header">Голос и обучение</div>
+                        <div class="setting-row">
+                            <span class="setting-label">Голосовое управление</span>
+                            <button type="button" id="btn-toggle-voice" class="toggle-switch-btn">
+                                <div class="toggle-thumb"></div>
+                            </button>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem;">
+                            <!-- DE Voice -->
+                            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                <span class="setting-label" style="font-size: 0.85rem;">Немецкий голос</span>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <select id="audio-provider-de" class="settings-select" style="flex: 1; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem; font-size: 0.85rem;">
+                                        <option value="elevenlabs">ElevenLabs</option>
+                                        <option value="responsivevoice">ResponsiveVoice</option>
+                                        <option value="browser">Браузерная</option>
+                                    </select>
+                                    <select id="audio-voice-de" class="settings-select" style="flex: 1.5; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem; font-size: 0.85rem;">
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- RU Voice -->
+                            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                <span class="setting-label" style="font-size: 0.85rem;">Русский голос</span>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <select id="audio-provider-ru" class="settings-select" style="flex: 1; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem; font-size: 0.85rem;">
+                                        <option value="elevenlabs">ElevenLabs</option>
+                                        <option value="responsivevoice">ResponsiveVoice</option>
+                                        <option value="browser">Браузерная</option>
+                                    </select>
+                                    <select id="audio-voice-ru" class="settings-select" style="flex: 1.5; background: var(--surface); color: var(--text-main); border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem; font-size: 0.85rem;">
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <!-- Counter -->
+                            <div style="font-size: 0.75rem; color: var(--text-muted); opacity: 0.8; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>ElevenLabs: <span id="elevenlabs-char-count">0</span> / 10,000 символов</span>
+                                <span id="elevenlabs-sync-error" style="color: #ff6b6b; display: none; font-size: 0.65rem;">(Нет прав API)</span>
+                            </div>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-label">Элементы озвучки</span>
+                            <div style="display: flex; align-items: center; gap: 0.25rem;">
+                                <button type="button" id="btn-toggle-audio-master" class="toggle-switch-btn">
+                                    <div class="toggle-thumb"></div>
+                                </button>
+                                <button type="button" id="btn-master-toggle-audio" class="btn-expand">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                                        fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                        stroke-linejoin="round">
+                                        <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Condensed sub-settings for audio -->
+                        <div id="section-audio-elements" class="settings-expand-section expanded">
+                            <div class="setting-inner-grid">
+                                <div class="setting-row">
+                                    <span class="setting-label">Слово</span>
+                                    <button id="btn-toggle-audio-word" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Формы глагола</span>
+                                    <button id="btn-toggle-audio-info1" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Дополнительно</span>
+                                    <button id="btn-toggle-audio-info2" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Пример 1</span>
+                                    <button id="btn-toggle-audio-ex1" class="toggle-switch-btn">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Пример 2</span>
+                                    <button id="btn-toggle-audio-ex2" class="toggle-switch-btn">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Перевод</span>
+                                    <button id="btn-toggle-audio-translation" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-group-divider"></div>
+
+                    <!-- Section 2: Appearance -->
+                    <div class="setting-section">
+                        <div class="setting-section-header">Оформление</div>
+                        <div class="setting-row">
+                            <span class="setting-label">Подсветка слова по роду</span>
+                            <button type="button" id="btn-toggle-gender-colors" class="toggle-switch-btn">
+                                <div class="toggle-thumb"></div>
+                            </button>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-label">Подсветка карточки по роду</span>
+                            <button type="button" id="btn-toggle-gender-card-bg" class="toggle-switch-btn">
+                                <div class="toggle-thumb"></div>
+                            </button>
+                        </div>
+
+                        <div class="setting-row">
+                            <span class="setting-label">Редактировать элементы карточки</span>
+                            <button id="btn-master-toggle-card" class="btn-expand">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="section-card-elements" class="settings-expand-section">
+                            <div class="setting-inner-grid">
+                                <div class="setting-row">
+                                    <span class="setting-label">Слово</span>
+                                    <button id="btn-toggle-word" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Формы глагола</span>
+                                    <button id="btn-toggle-info1" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Дополнительно</span>
+                                    <button id="btn-toggle-info2" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Пример 1</span>
+                                    <button id="btn-toggle-ex1" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Пример 2</span>
+                                    <button id="btn-toggle-ex2" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <span class="setting-label">Редактировать интерфейс сессии</span>
+                            <button id="btn-master-toggle-interface" class="btn-expand">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round">
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                        <div id="section-interface-elements" class="settings-expand-section">
+                            <div class="setting-inner-grid">
+                                <div class="setting-row">
+                                    <span class="setting-label">Прогресс-бар</span>
+                                    <button id="btn-toggle-progress" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Всего слов</span>
+                                    <button id="btn-toggle-stat-total" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">К повторению</span>
+                                    <button id="btn-toggle-stat-due" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                                <div class="setting-row">
+                                    <span class="setting-label">Пройдено сегодня</span>
+                                    <button type="button" id="btn-toggle-stat-today" class="toggle-switch-btn active">
+                                        <div class="toggle-thumb"></div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-group-divider"></div>
+
+                    <!-- Section 3: Other -->
+                    <div class="setting-section">
+                        <div class="setting-section-header">Другое</div>
+                        <div class="setting-row">
+                            <span class="setting-label">Изучать активные слова</span>
+                            <button type="button" id="btn-toggle-include-active" class="toggle-switch-btn">
+                                <div class="toggle-thumb"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fixed Footer for 'Done' Button -->
+                <div class="card-edit-footer desktop-only">
+                    <button type="button" class="btn-primary" onclick="window.StudyModule.applySettings()"
+                        onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                        Готово
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://code.responsivevoice.org/responsivevoice.js"></script>
+    <script src="voice-control.js"></script>
+    <script src="profile.js"></script>
+    <script src="prufung.js"></script>
+    <script src="study.js"></script>
+    <script src="vendor/twink-bridge.js"></script>
+    <script src="settings.js"></script>
+    <script src="particles.js?v=antigravity"></script>
+    <script src="app.js"></script>
+    <script src="edit-word.js"></script>
+    <script src="idioms.js"></script>
+    <script src="idioms-ui.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                (!window.TwinkNative) && navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('SW Registered', reg))
+                    .catch(err => console.log('SW Registration failed', err));
+            });
+        }
+    </script>
+</body>
+
+</html>
