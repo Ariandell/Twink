@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { commonsSearchUrl, commonsUserAgent, commonsCandidates, validCommonsResponse } from "./commons.mjs";
 
 export const normalize = (value) => String(value ?? "").trim().replace(/\s+/gu, " ").toLowerCase();
 export const imageKey = (word) => createHash("sha256")
@@ -45,12 +46,12 @@ export function photoRecord(photo) {
   };
 }
 
-export function emptyCatalog() {
-  return { schemaVersion: 1, provider: "pexels", entries: {} };
+export function emptyCatalog(provider = "pexels") {
+  return { schemaVersion: 1, provider, entries: {} };
 }
 
 export function validateCatalog(catalog) {
-  if (catalog?.schemaVersion !== 1 || catalog?.provider !== "pexels" || !catalog.entries || typeof catalog.entries !== "object" || Array.isArray(catalog.entries)) {
+  if (catalog?.schemaVersion !== 1 || !["pexels", "commons"].includes(catalog?.provider) || !catalog.entries || typeof catalog.entries !== "object" || Array.isArray(catalog.entries)) {
     throw new Error("Непідтримуваний формат каталогу зображень. Наявний файл не змінено.");
   }
   return catalog;
@@ -67,9 +68,10 @@ export function planWords(words, catalog = emptyCatalog(), overrides = {}) {
 }
 
 const HOUR = 3_600_000;
-export function quotaDelay(ledger, now) {
-  ledger.attempts = (ledger.attempts ?? []).filter((time) => time > now - HOUR);
-  const hourDelay = ledger.attempts.length >= 200 ? ledger.attempts[0] + HOUR - now + 1000 : 0;
+export function quotaDelay(ledger, now, provider = "pexels") {
+  const window = provider === "commons" ? 60_000 : HOUR, maximum = provider === "commons" ? 30 : 200;
+  ledger.attempts = (ledger.attempts ?? []).filter((time) => time > now - window);
+  const hourDelay = ledger.attempts.length >= maximum ? ledger.attempts[0] + window - now + 1000 : 0;
   return Math.max(hourDelay, (ledger.pauseUntil ?? 0) - now, 0);
 }
 
@@ -91,53 +93,66 @@ export function readQuota(response, ledger, now) {
 export async function runBatch({ words, catalog, ledger, apiKey, limit = 200, overrides = {},
   fetchImpl = fetch, now = Date.now, saveCatalog, saveLedger,
   cacheGet = async () => null, cachePut = async () => {}, retryMissing = false, retryErrors = false,
-  progress = () => {}, signal,
+  progress = () => {}, signal, pace = async () => {},
 }) {
   validateCatalog(catalog);
-  if (!apiKey || !String(apiKey).trim()) throw new Error("Не задано ключ PEXELS_API_KEY.");
+  const provider = catalog.provider;
+  if (provider === "pexels" && (!apiKey || !String(apiKey).trim())) throw new Error("Не задано ключ PEXELS_API_KEY.");
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("Порція має містити від 1 до 200 запитів.");
   const plan = planWords(words, catalog, overrides);
   const result = { requests: 0, matched: 0, missing: 0, skipped: 0, cached: 0, errors: 0, pending: 0, stop: "complete", httpStatus: null, resumeAt: null };
   for (const item of plan) {
     const old = catalog.entries[item.key];
-    if (old && !(old.status === "not_found" && retryMissing) && !(old.status === "error" && retryErrors)) { result.skipped++; continue; }
+    if (old && !(["not_found", "needs_review"].includes(old.status) && old.reviewed !== true && retryMissing) && !(old.status === "error" && retryErrors)) { result.skipped++; continue; }
     if (signal?.aborted) { result.stop = "interrupted"; break; }
-    const cacheKey = createHash("sha256").update(JSON.stringify([item.query, item.locale, 3])).digest("hex");
+    const cacheKey = createHash("sha256").update(JSON.stringify([provider === "commons" ? "commons-title-v1" : provider, item.query, item.locale, 3])).digest("hex");
     let data = await cacheGet(cacheKey);
     if (data) result.cached++;
     else {
       if (result.requests >= limit) { result.stop = "batch_limit"; break; }
-      const delay = quotaDelay(ledger, now());
+      await pace(ledger);
+      if (signal?.aborted) { result.stop = "interrupted"; break; }
+      const delay = quotaDelay(ledger, now(), provider);
       if (delay > 0) { result.stop = "quota"; result.resumeAt = new Date(now() + delay).toISOString(); break; }
       // Persist BEFORE sending: interruption/timeout still consumes the budget.
       ledger.attempts.push(now());
       await saveLedger(ledger);
       result.requests++;
-      const url = new URL("https://api.pexels.com/v1/search");
-      url.search = new URLSearchParams({ query: item.query, locale: item.locale, orientation: "landscape", per_page: "3" });
+      const url = provider === "commons" ? commonsSearchUrl(item.query) : new URL("https://api.pexels.com/v1/search");
+      if (provider === "pexels") url.search = new URLSearchParams({ query: item.query, locale: item.locale, orientation: "landscape", per_page: "3" });
       let response;
       try {
-        response = await fetchImpl(url, { headers: { Authorization: apiKey }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
+        response = await fetchImpl(url, { headers: provider === "commons" ? { "User-Agent": commonsUserAgent } : { Authorization: apiKey }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000) });
       } catch {
         result.errors++;
         result.stop = signal?.aborted ? "interrupted" : "network_error";
         // No automatic retry: the request may have reached Pexels.
         break;
       }
-      readQuota(response, ledger, now());
+      if (provider === "pexels") readQuota(response, ledger, now());
+      else if (response.status === 429 || response.status === 503) {
+        const retry = response.headers.get("retry-after");
+        const retryAt = retry && /^\d+$/u.test(retry) ? now() + Number(retry) * 1000 : Date.parse(retry);
+        ledger.pauseUntil = retryAt > now() ? retryAt : now() + 60_000;
+      }
       await saveLedger(ledger);
       if (!response.ok) {
         result.errors++;
         result.httpStatus = response.status;
-        result.stop = response.status === 429 ? "quota" : response.status === 401 || response.status === 403 ? "auth_error" : "api_error";
+        result.stop = response.status === 429 || response.status === 503 && provider === "commons" ? "quota" : provider === "pexels" && (response.status === 401 || response.status === 403) ? "auth_error" : "api_error";
         if (ledger.pauseUntil > now()) result.resumeAt = new Date(ledger.pauseUntil).toISOString();
         break;
       }
       try { data = await response.json(); } catch { result.errors++; result.stop = "invalid_response"; break; }
-      if (!Array.isArray(data?.photos)) { result.errors++; result.stop = "invalid_response"; break; }
+      if (provider === "commons" && data?.error && ["maxlag", "ratelimited"].includes(data.error.code)) {
+        ledger.pauseUntil = now() + 60_000;
+        await saveLedger(ledger);
+        result.errors++; result.stop = "quota"; result.resumeAt = new Date(ledger.pauseUntil).toISOString(); break;
+      }
+      if (provider === "commons" ? !validCommonsResponse(data) : !Array.isArray(data?.photos)) { result.errors++; result.stop = "invalid_response"; break; }
       await cachePut(cacheKey, data);
     }
-    const candidates = data.photos.map(photoRecord).filter(Boolean);
+    const candidates = provider === "commons" ? commonsCandidates(data) : data.photos.map(photoRecord).filter(Boolean);
     catalog.entries[item.key] = {
       word: String(item.word.word ?? item.word.idiom), translation: String(item.word.translation ?? ""),
       sourceId: String(item.word.id ?? ""), context: [item.word.ex1, item.word.ex2, item.word.example].filter(Boolean).join("\n"),

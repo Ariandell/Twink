@@ -3,6 +3,7 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { atomicJson, readJson, readWords, acquireLock } from "./images/files.mjs";
 import { emptyCatalog, validateCatalog, planWords, runBatch } from "./images/catalog.mjs";
 import { reviewHtml } from "./images/review.mjs";
@@ -11,15 +12,18 @@ async function main() {
   const { values: args } = parseArgs({ options: {
     input: { type: "string" }, output: { type: "string" }, limit: { type: "string", default: "200" },
     "key-file": { type: "string" }, queries: { type: "string" }, "state-dir": { type: "string" },
+    provider: { type: "string", default: "pexels" },
     "dry-run": { type: "boolean" }, "retry-missing": { type: "boolean" }, "retry-errors": { type: "boolean" },
     help: { type: "boolean" },
   }});
   if (args.help || !args.input || !args.output) {
-    console.log("Пошук картинок до слів Twink (Node.js 24)\n\nnode scripts/word-images.mjs --input words.xlsx --output PATH/catalog.json [--limit 200] [--key-file PATH/pexels.json]\n\n--dry-run        Підготувати план без API-запитів.\n--queries PATH  План/перевизначення запитів за ключами слів.\n--retry-missing Повторити слова без результатів (решту пропустити).\n\nКлюч: PEXELS_API_KEY у середовищі або приватний файл. Каталог і HTML-звіт не публікуються автоматично.");
+    console.log("Пошук картинок до слів Twink (Node.js 24)\n\nnode scripts/word-images.mjs --input words.xlsx --output PATH/catalog.json [--provider commons|pexels] [--limit 200] [--key-file PATH/pexels.json]\n\n--dry-run        Підготувати план без API-запитів.\n--queries PATH  План/перевизначення запитів за ключами слів.\n--retry-missing Повторити слова без результатів (решту пропустити).\n\nCommons працює без ключа. Для Pexels потрібен PEXELS_API_KEY. Каталог і HTML-звіт не публікуються автоматично.");
     if (!args.help) process.exitCode = 2;
     return;
   }
   const output = resolve(args.output), input = resolve(args.input), limit = Number(args.limit);
+  const provider = args.provider;
+  if (!["commons", "pexels"].includes(provider)) throw new Error("--provider має бути commons або pexels.");
   if (input === output) throw new Error("Вхідний словник і вихідний каталог мають бути різними файлами.");
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new Error("--limit має бути цілим числом від 1 до 200.");
   const words = await readWords(input);
@@ -27,7 +31,8 @@ async function main() {
   const overrides = overridesFile.queries ?? overridesFile;
   if (typeof overrides !== "object" || Array.isArray(overrides) || overrides === null) throw new Error("Некоректний файл пошукових запитів.");
   if (args["dry-run"]) {
-    const catalog = validateCatalog(await readJson(output, emptyCatalog()));
+    const catalog = validateCatalog(await readJson(output, emptyCatalog(provider)));
+    if (catalog.provider !== provider) throw new Error("Для іншого джерела зображень вкажіть окремий вихідний каталог.");
     const plan = planWords(words, catalog, overrides);
     const path = `${output}.plan.json`;
     await atomicJson(path, {
@@ -40,17 +45,17 @@ async function main() {
     return;
   }
   let apiKey = process.env.PEXELS_API_KEY?.trim();
-  if (args["key-file"]) {
+  if (provider === "pexels" && args["key-file"]) {
     const raw = (await readFile(resolve(args["key-file"]), "utf8")).trim();
     try { apiKey = raw.startsWith("{") ? JSON.parse(raw).PEXELS_API_KEY : raw; }
     catch { throw new Error("Некоректний приватний файл ключа Pexels. Його вміст не виводиться."); }
   }
-  if (!apiKey || typeof apiKey !== "string" || /[\r\n]/u.test(apiKey)) throw new Error("Потрібен ключ PEXELS_API_KEY або --key-file з {\"PEXELS_API_KEY\":\"…\"}. Ключ не виводиться у звіти.");
-  apiKey = apiKey.trim();
+  if (provider === "pexels" && (!apiKey || typeof apiKey !== "string" || /[\r\n]/u.test(apiKey))) throw new Error("Потрібен ключ PEXELS_API_KEY або --key-file з {\"PEXELS_API_KEY\":\"…\"}. Ключ не виводиться у звіти.");
+  apiKey = provider === "pexels" ? apiKey.trim() : undefined;
   // Global per-key state prevents a second output file/process from resetting
   // the same account's hourly budget. Other API users can still exhaust it;
   // HTTP 429 and provider headers always take precedence.
-  const state = join(args["state-dir"] ? resolve(args["state-dir"]) : join(homedir(), ".twink", "pexels"), createHash("sha256").update(apiKey).digest("hex").slice(0, 24));
+  const state = join(args["state-dir"] ? resolve(args["state-dir"]) : join(homedir(), ".twink", provider), provider === "commons" ? "anonymous" : createHash("sha256").update(apiKey).digest("hex").slice(0, 24));
   const keyUnlock = await acquireLock(join(state, "search.lock"));
   let outputUnlock;
   const controller = new AbortController();
@@ -60,12 +65,18 @@ async function main() {
   try {
     // Also serialize different keys writing the same catalog.
     outputUnlock = await acquireLock(`${output}.lock`);
-    const catalog = validateCatalog(await readJson(output, emptyCatalog()));
+    const catalog = validateCatalog(await readJson(output, emptyCatalog(provider)));
+    if (catalog.provider !== provider) throw new Error("Для іншого джерела зображень вкажіть окремий вихідний каталог.");
     const ledger = await readJson(join(state, "quota.json"), { attempts: [] });
     const result = await runBatch({ words, catalog, ledger, apiKey, limit, overrides,
       retryMissing: args["retry-missing"], retryErrors: args["retry-errors"], signal: controller.signal,
       saveCatalog: (data) => atomicJson(output, data),
       saveLedger: (data) => atomicJson(join(state, "quota.json"), data),
+      pace: async (ledger) => {
+        if (provider !== "commons" || !ledger.attempts?.length) return;
+        const delay = Math.max(0, ledger.attempts.at(-1) + 2100 - Date.now());
+        if (delay) { try { await sleep(delay, undefined, { signal: controller.signal }); } catch (error) { if (error.name !== "AbortError") throw error; } }
+      },
       cacheGet: async (key) => {
         const cache = await readJson(join(state, "cache", `${key}.json`), null);
         return cache && Date.now() - cache.time < 86_400_000 ? cache.data : null;
