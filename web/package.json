@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node scripts/prepare-classic.mjs && vite --host 127.0.0.1",
     "build": "node scripts/prepare-classic.mjs && vite build && node scripts/offline-shell.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "images:batch": "node scripts/word-images.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
