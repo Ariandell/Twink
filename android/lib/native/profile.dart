@@ -251,7 +251,7 @@ extension _ProfileView on _NativeHomeState {
               ('All', days.values.fold<num>(0, (a, b) => a + b)),
             ])
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 9.25),
+                padding: const EdgeInsets.symmetric(vertical: 10.25),
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(color: fg.withValues(alpha: .03)),
@@ -476,8 +476,8 @@ extension _ProfileView on _NativeHomeState {
                           boxShadow: n > 0
                               ? [
                                   BoxShadow(
-                                    color: fg.withValues(alpha: .15),
-                                    blurRadius: 10,
+                                    color: fg.withValues(alpha: .4),
+                                    blurRadius: 15,
                                   ),
                                 ]
                               : null,

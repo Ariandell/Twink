@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,79 @@ import 'package:twink_android/domain.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+  test('progress applies acknowledged fields without GET; errors and stale reloads preserve data', () async {
+    var gets = 0, reject = false;
+    Completer<http.Response>? heldGet;
+    const original =
+        '{"nickname":"Test","words":{"1":{"word":"eins","translation":"one"},"2":{"word":"zwei"}}}';
+    final store = TwinkStore(
+      client: MockClient((r) async {
+        if (r.url.host == 'identitytoolkit.googleapis.com') {
+          return http.Response(
+            '{"localId":"u","idToken":"token","refreshToken":"refresh","expiresIn":"3600"}',
+            200,
+          );
+        }
+        if (r.method == 'GET') {
+          gets++;
+          return heldGet == null
+              ? http.Response(original, 200)
+              : await heldGet.future;
+        }
+        expect(r.method, 'PATCH');
+        return reject
+            ? http.Response('{"error":"Permission denied"}', 403)
+            : http.Response('{}', 200);
+      }),
+    );
+    await store.login('test@example.com', 'password');
+    final initialGets = gets, oldData = jsonEncode(store.data);
+    final p = {'interval': 7, 'nextDate': 123};
+    reject = true;
+    await expectLater(store.progress('words', '1', p), throwsException);
+    expect(jsonEncode(store.data), oldData);
+    reject = false;
+    await store.progress('words', '1', p);
+    expect(
+      gets,
+      initialGets,
+      reason: 'A rating must not download the full dictionary again.',
+    );
+    expect(store.words.first['progress_global'], p);
+    expect(store.words.first['word'], 'eins');
+    expect(store.words.first['translation'], 'one');
+    expect(store.words.last['word'], 'zwei');
+    heldGet = Completer<http.Response>();
+    final loading = store.reload();
+    await Future<void>.delayed(Duration.zero);
+    var notifications = 0, readCompleted = false;
+    store.addListener(() => notifications++);
+    final release = store.holdVisualUpdates();
+    final updated = {'interval': 12, 'nextDate': 456};
+    await store.progress('words', '1', updated);
+    expect(notifications, 0);
+    loading.then((_) => readCompleted = true);
+    heldGet.complete(http.Response(original, 200));
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      readCompleted,
+      false,
+      reason: 'A full dictionary response waits until motion has finished.',
+    );
+    release();
+    await loading;
+    expect(notifications, 1);
+    expect(
+      store.words.first['progress_global'],
+      updated,
+      reason: 'An older read must not erase an acknowledged rating.',
+    );
+    await store.progress('words', '1', null);
+    expect(store.words.first['progress_global'], isNull);
+    expect(store.words.first['interval'], 0);
+    expect(store.words.first['word'], 'eins');
+    store.dispose();
+  });
   test(
     'time preserves both original daily statistics representations',
     () async {

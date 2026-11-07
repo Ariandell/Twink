@@ -20,4 +20,12 @@
 web/public/classic/vendor/firebase-compat.js
 web/public/classic/vendor/twink-bridge.js
 android/assets/classic/
+# Local dictionary/image data and generated compatibility bundles.
+/android/assets/lexicon/
+/android/assets/word-images/
+/web/public/lexicon/
+/web/public/word-images/
+/web/public/classic/vendor/twink-enhancements.js
+/web/public/classic/vendor/twink-images.js
+/web/public/classic/vendor/twink-rev-*.js
 **/word-images-private/

@@ -1,7 +1,7 @@
 name: twink_android
 description: "Twink: German vocabulary, spaced repetition and exams."
 publish_to: 'none'
-version: 0.3.1+6
+version: 0.3.11+20
 
 environment:
   sdk: ^3.13.2
@@ -29,6 +29,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icons/
+    - assets/word-images/
+    - assets/word-images/images/
   fonts:
     - family: Roboto
       fonts:
@@ -41,3 +43,24 @@ flutter:
           weight: 900
         - asset: assets/fonts/roboto-italic.ttf
           style: italic
+
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 100
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 200
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 300
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 400
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 500
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 600
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 700
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 800
+        - asset: assets/fonts/outfit-variable.ttf
+          weight: 900

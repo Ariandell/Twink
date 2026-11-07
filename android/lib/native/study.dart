@@ -538,7 +538,7 @@ extension _StudyView on _NativeHomeState {
       );
       return;
     }
-    prefs.set('last_session', {'kind': k, 'folder': folder});
+    prefs.set('last_session', {'kind': k, 'folder': folder}, notify: false);
     if (!mounted) return;
     await Navigator.push<void>(
       context,
@@ -585,23 +585,57 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       listening = false,
       resumed = true,
       leaving = false;
-  bool missing = false;
+  bool missing = false, savingRating = false;
+  bool _peeling = false;
+  Map<String, List<String>> _pictureIndex = {};
+  List<String> get _pictures {
+    final key = _StickerPictures.normalize(wordTitle(word));
+    final direct = _pictureIndex[key];
+    if (direct != null) return direct;
+    final head = key.split(',').first;
+    return _pictureIndex[head] ?? const [];
+  }
+
+  late List<Json> _records;
   Json? result, incorrectState;
   final history = <Json>[];
   final answer = TextEditingController(), recognition = SpeechToText();
   final elapsed = ValueNotifier<int>(0);
-  final cardsScroll = ScrollController();
   Timer? clock, restart;
   DateTime activity = DateTime.now();
   Future<void>? flushing;
+  VoidCallback? _releaseVisualUpdates;
+  Completer<void>? _motionIdle;
+  int _speechRequest = 0;
+  void _beginCardMotion() {
+    if (MediaQuery.disableAnimationsOf(context)) return;
+    _releaseVisualUpdates ??= widget.store.holdVisualUpdates();
+    _motionIdle ??= Completer<void>();
+  }
+
+  void _endCardMotion() {
+    final release = _releaseVisualUpdates, idle = _motionIdle;
+    _releaseVisualUpdates = null;
+    _motionIdle = null;
+    release?.call();
+    idle?.complete();
+  }
+
   Json get settings => {...originalSettings, ...widget.store.settings};
+  bool get firstBack => !widget.exam && settings['firstSide'] == 'translation';
   Json get word => queue[index];
-  List<Json> get all =>
-      widget.kind == 'words' ? widget.store.words : widget.store.idioms;
+  List<Json> get all => _records;
   String get sessionKey => 'session-${widget.kind}-${widget.folder ?? 'all'}';
   @override
   void initState() {
     super.initState();
+    back = firstBack;
+    _StickerPictures.load().then((pictures) {
+      if (mounted) setState(() => _pictureIndex = pictures);
+    });
+    _records = widget.kind == 'words'
+        ? widget.store.words
+        : widget.store.idioms;
     WidgetsBinding.instance.addObserver(this);
     widget.store.addListener(syncCurrent);
     final scope = all
@@ -615,9 +649,10 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           ..shuffle();
     if (!widget.exam) {
       final saved = asMap(widget.prefs.values[sessionKey]), ids = saved['ids'];
+      final byId = {for (final w in all) w['id'].toString(): w};
       if (ids is List && number(saved['index']) < ids.length) {
         final restored = ids
-            .map((id) => all.where((w) => '${w['id']}' == '$id').firstOrNull)
+            .map((id) => byId[id.toString()])
             .whereType<Json>()
             .where((w) => eligible(w))
             .map((e) => Map<String, dynamic>.from(e))
@@ -645,7 +680,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
         finish();
       } else {
         saveSession();
-        if (!widget.exam) speakFront();
+        if (!widget.exam) speakVisibleSide();
       }
     });
   }
@@ -654,6 +689,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.store.removeListener(syncCurrent);
+    _endCardMotion();
     clock?.cancel();
     restart?.cancel();
     audio.speech.stop();
@@ -661,7 +697,6 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     flush();
     answer.dispose();
     elapsed.dispose();
-    cardsScroll.dispose();
     super.dispose();
   }
 
@@ -669,6 +704,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     resumed = state == AppLifecycleState.resumed;
     if (!resumed) {
+      _endCardMotion();
       audio.speech.stop();
       recognition.stop();
       flush();
@@ -680,11 +716,14 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     widget.prefs.set(sessionKey, {
       'ids': queue.skip(index).map((e) => e['id']).toList(),
       'index': 0,
-    });
+    }, notify: false);
   }
 
   void syncCurrent() {
     if (!mounted || busy || leaving || index >= queue.length) return;
+    _records = widget.kind == 'words'
+        ? widget.store.words
+        : widget.store.idioms;
     final fresh = all.where((w) => '${w['id']}' == '${word['id']}').firstOrNull;
     setState(() {
       missing = fresh == null;
@@ -716,7 +755,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     if (busy) return;
     index++;
     missing = false;
-    back = false;
+    back = firstBack;
     result = null;
     answer.clear();
     saveSession();
@@ -725,7 +764,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       return;
     }
     setState(() {});
-    speakFront();
+    speakVisibleSide();
   }
 
   Future<void> flush() async {
@@ -750,7 +789,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     recognition.stop();
     await flush();
     if (!mounted) return;
-    widget.prefs.set(sessionKey, null);
+    widget.prefs.set(sessionKey, null, notify: false);
     await showDialog<void>(
       context: context,
       builder: (c) => AlertDialog(
@@ -780,11 +819,10 @@ class _NativeStudyPageState extends State<NativeStudyPage>
         history.removeLast();
         index = last['index'] as int;
         queue[index]['progress_global'] = last['progress'];
-        back = false;
+        back = firstBack;
         saveSession();
         if (mounted) setState(() => busy = false);
-        if (cardsScroll.hasClients) cardsScroll.jumpTo(0);
-        speakFront();
+        speakVisibleSide();
       } catch (e) {
         if (mounted) {
           setState(() => busy = false);
@@ -813,6 +851,22 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     await audio.speech.speak(speechPlan(word, settings), _audioSettings('de'));
   }
 
+  Future<void> speakVisibleSide() async {
+    if (!back) return speakFront();
+    if (!mounted ||
+        queue.isEmpty ||
+        widget.exam ||
+        settings['audio'] != true ||
+        settings['audioTranslation'] != true) {
+      return;
+    }
+    await audio.speech.say(
+      "${word['translation'] ?? ''}${widget.kind == 'idioms' && settings['audioInfo1'] == true ? '. ${word['meaning'] ?? ''}' : ''}",
+      language: 'ru',
+      settings: _audioSettings('ru'),
+    );
+  }
+
   Json _audioSettings(String lang) {
     final selection =
         '${settings[lang == 'de' ? 'selectAudioDe' : 'selectAudioRu'] ?? ''}';
@@ -826,63 +880,96 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   }
 
   void flip() {
-    if (busy || missing) return;
+    if ((busy && !savingRating) || missing) return;
     activity = DateTime.now();
+    _beginCardMotion();
     setState(() => back = !back);
     audio.speech.stop();
-    if (settings['audio'] == true) {
-      if (back && settings['audioTranslation'] == true) {
-        audio.speech.say(
-          '${word['translation'] ?? ''}${widget.kind == 'idioms' && settings['audioInfo1'] == true ? '. ${word['meaning'] ?? ''}' : ''}',
-          language: 'ru',
-          settings: _audioSettings('ru'),
-        );
-      } else if (!back) {
-        speakFront();
-      }
+    _speakAfterMotion();
+  }
+
+  Future<void> _speakAfterMotion() async {
+    final request = ++_speechRequest;
+    await _motionIdle?.future;
+    if (mounted &&
+        resumed &&
+        !leaving &&
+        request == _speechRequest &&
+        ModalRoute.of(context)?.isCurrent == true) {
+      speakVisibleSide();
     }
   }
 
   Future<void> rate(int rating) async {
-    if (busy || missing || widget.exam) return;
+    if (busy || missing || widget.exam || _peeling) return;
     activity = DateTime.now();
-    setState(() => busy = true);
-    await audio.speech.stop();
-    final previous = word['progress_global'] == null
+    final ratedIndex = index, rated = word, previousBack = back;
+    final id = rated['id'].toString();
+    final previous = rated['progress_global'] == null
         ? null
-        : Map<String, dynamic>.from(asMap(word['progress_global']));
+        : Map<String, dynamic>.from(asMap(rated['progress_global']));
     final next = review(
-      asMap(word['progress_global']),
+      asMap(rated['progress_global']),
       rating,
-      mode: '${settings['studyMode']}',
+      mode: settings['studyMode'].toString(),
     );
+    final hasNext = index + 1 < queue.length;
+    if (hasNext && back != firstBack) _beginCardMotion();
+    unawaited(audio.speech.stop().catchError((_) {}));
+    setState(() {
+      busy = savingRating = true;
+      queue[ratedIndex] = {...rated, 'progress_global': next};
+      _records = [
+        for (final w in all)
+          if (w['id'].toString() == id) {...w, 'progress_global': next} else w,
+      ];
+      if (hasNext) {
+        index++;
+        back = firstBack;
+      }
+    });
+    if (hasNext) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && index == ratedIndex + 1 && !leaving) _speakAfterMotion();
+      });
+    }
     try {
-      await widget.store.progress(widget.kind, '${word['id']}', next);
-      history.add({'id': word['id'], 'index': index, 'progress': previous});
-      if (history.length > 10) history.removeAt(0);
-      word['progress_global'] = next;
-      index++;
-      back = false;
-      saveSession();
+      await widget.store.progress(widget.kind, id, next);
+      await _motionIdle?.future;
       if (!mounted) return;
-      if (index >= queue.length) {
-        await finish();
-      } else {
-        setState(() => busy = false);
-        if (cardsScroll.hasClients) cardsScroll.jumpTo(0);
-        speakFront();
-      }
+      history.add({'id': id, 'index': ratedIndex, 'progress': previous});
+      if (history.length > 10) history.removeAt(0);
+      _records = widget.kind == 'words'
+          ? widget.store.words
+          : widget.store.idioms;
+      if (!hasNext) index++;
+      saveSession();
+      setState(() {
+        busy = savingRating = false;
+      });
+      if (hasNext) syncCurrent();
+      if (!hasNext) await finish();
     } catch (e) {
-      if (mounted) {
-        setState(() => busy = false);
-        notify(context, e);
-      }
+      await _motionIdle?.future;
+      if (!mounted) return;
+      setState(() {
+        queue[ratedIndex] = rated;
+        index = ratedIndex;
+        back = previousBack;
+        busy = savingRating = false;
+        _records = widget.kind == 'words'
+            ? widget.store.words
+            : widget.store.idioms;
+      });
+      unawaited(audio.speech.stop().catchError((_) {}));
+      notify(context, 'Не удалось сохранить оценку. Повторите попытку.');
     }
   }
 
   Future<void> edit() async {
     await audio.speech.stop();
     if (!mounted) return;
+    _endCardMotion();
     final updated = await Navigator.push<Json>(
       context,
       MaterialPageRoute(
@@ -896,25 +983,65 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     if (updated != null && mounted) {
       setState(() {
         queue[index] = {...word, ...updated};
-        back = false;
+        back = firstBack;
       });
-      speakFront();
+      speakVisibleSide();
     }
   }
 
   Future<void> openSettings() async {
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _SessionSettings(
-          store: widget.store,
-          voiceOn: listening,
-          onVoice: toggleVoice,
+    _endCardMotion();
+    final previousFirstBack = firstBack;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Закрыть настройки',
+      transitionDuration: Duration(
+        milliseconds: MediaQuery.disableAnimationsOf(context) ? 0 : 500,
+      ),
+      transitionBuilder: (context, animation, secondary, child) {
+        final t = const Cubic(.16, 1, .3, 1).transform(animation.value);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - t)),
+            child: Transform.scale(scale: .9 + .1 * t, child: child),
+          ),
+        );
+      },
+      barrierColor: Colors.black.withValues(alpha: .4),
+      pageBuilder: (dialogContext, animation, secondary) => Dialog(
+        insetPadding: const EdgeInsets.all(12),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: SizedBox(
+          width: 600,
+          height: MediaQuery.sizeOf(dialogContext).height - 24,
+          child: Surface(
+            radius: 0,
+            padding: EdgeInsets.zero,
+            glass: GlassKind.overlay,
+            blur: 20,
+            background: ink(dialogContext).withValues(alpha: .09),
+            child: _SessionSettings(
+              store: widget.store,
+              prefs: widget.prefs,
+              voiceOn: listening,
+              onVoice: toggleVoice,
+            ),
+          ),
         ),
       ),
     );
     if (mounted) {
-      setState(() {});
+      final changedSide = firstBack != previousFirstBack;
+      setState(() {
+        if (changedSide) back = firstBack;
+      });
+      if (changedSide) {
+        await audio.speech.stop();
+        speakVisibleSide();
+      }
       if (settings['audio'] != true) audio.speech.stop();
     }
   }
@@ -1168,222 +1295,297 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       final last = number(asMap(w['progress_global'])['lastReviewed']).toInt();
       return last > 0 && logicalDay(last) == today;
     }).length;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: ListView(
-            controller: cardsScroll,
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 110),
-            children: [
-              Row(
-                children: [
-                  Square('back', onTap: exit, tooltip: 'Выйти'),
-                  const SizedBox(width: 8),
-                  Square(
-                    settings['audio'] == true ? 'volume' : 'muted',
-                    active: settings['audio'] == true,
-                    onTap: () async {
-                      await widget.store.patch({
-                        'settings/study': {
-                          ...settings,
-                          'audio': settings['audio'] != true,
-                        },
-                      });
-                      if (mounted) setState(() {});
-                      if (settings['audio'] != true) audio.speech.stop();
-                    },
-                    tooltip: 'Озвучка',
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: label(
-                        widget.folder ??
-                            (widget.kind == 'words'
-                                ? 'Все слова'
-                                : 'Все идиомы'),
-                        size: 16,
-                        weight: FontWeight.w700,
-                        align: TextAlign.center,
-                        lines: 1,
-                      ),
-                    ),
-                  ),
-                  const Glyph('star', size: 15),
-                  const SizedBox(width: 5),
-                  label('$ideal', size: 12, weight: FontWeight.w700),
-                  const SizedBox(width: 10),
-                  ValueListenableBuilder<int>(
-                    valueListenable: elapsed,
-                    builder: (context, n, _) => Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: fg.withValues(alpha: .1),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      child: label(
-                        formatSeconds(n),
-                        size: 11,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Square('settings', onTap: openSettings, tooltip: 'Настройки'),
-                ],
-              ),
-              gap(24),
-              Row(
-                spacing: 12,
-                children: [
-                  for (final v in <(String, String, bool)>[
-                    (
-                      '${scope.length}',
-                      'Всего слов',
-                      settings['showStatTotal'] == true,
-                    ),
-                    ('$due', 'К повторению', settings['showStatDue'] == true),
-                    (
-                      '$learned',
-                      'Пройдено сегодня',
-                      settings['showStatToday'] == true,
-                    ),
-                  ])
-                    if (v.$3)
-                      Expanded(
-                        child: SizedBox(
-                          height: 76,
-                          child: Surface(
-                            radius: 12,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 9,
+    return LayoutBuilder(
+      builder: (context, viewport) {
+        final compact = viewport.maxHeight < 740 || viewport.maxWidth <= 360;
+        final columns = compact ? 3 : 2;
+        final spacing = compact ? 8.0 : 12.0;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(12, compact ? 8 : 12, 12, 72),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: viewport.maxWidth - 24,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Square(
+                              'back',
+                              onTap: exit,
+                              tooltip: 'Выйти',
+                              size: compact ? 32 : 40,
                             ),
-                            strong: true,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                label(v.$1, size: 18, weight: FontWeight.w700),
-                                gap(4),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 90,
-                                  ),
-                                  child: label(
-                                    v.$2,
-                                    size: 11.2,
-                                    color: muted(context),
-                                    align: TextAlign.center,
-                                  ),
+                            const SizedBox(width: 8),
+                            Square(
+                              settings['audio'] == true ? 'volume' : 'muted',
+                              active: settings['audio'] == true,
+                              size: compact ? 32 : 40,
+                              onTap: () async {
+                                await widget.store.patch({
+                                  'settings/study': {
+                                    ...settings,
+                                    'audio': settings['audio'] != true,
+                                  },
+                                });
+                                if (mounted) setState(() {});
+                                if (settings['audio'] != true) {
+                                  audio.speech.stop();
+                                }
+                              },
+                              tooltip: 'Озвучка',
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                ],
-              ),
-              gap(24),
-              _NativeFlashcard(
-                key: ValueKey('${word['id']}'),
-                back: back,
-                onFlip: flip,
-                front: _front(),
-                reverse: _back(),
-              ),
-              gap(32),
-              LayoutBuilder(
-                builder: (context, c) => Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (var r = 1; r <= 6; r++)
-                      SizedBox(
-                        width: (c.maxWidth - 12) / 2,
-                        child: Tap(
-                          label: ratingNames[r],
-                          onTap: busy ? null : () => rate(r),
-                          child: Container(
-                            height: 60,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: fg.withValues(alpha: .85),
+                                child: label(
+                                  widget.folder ??
+                                      (widget.kind == 'words'
+                                          ? 'Все слова'
+                                          : 'Все идиомы'),
+                                  size: 16,
+                                  weight: FontWeight.w700,
+                                  align: TextAlign.center,
+                                  lines: 1,
+                                ),
                               ),
-                              color: prefsSchemeColor(r),
                             ),
-                            child: Stack(
-                              children: [
-                                Center(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      label(
-                                        ratingNames[r],
-                                        size: 14,
-                                        weight: FontWeight.w700,
-                                      ),
-                                      gap(2),
-                                      label(_intervalLabel(r), size: 12),
-                                    ],
-                                  ),
+                            const Glyph('star', size: 15),
+                            const SizedBox(width: 5),
+                            label('$ideal', size: 12, weight: FontWeight.w700),
+                            const SizedBox(width: 10),
+                            ValueListenableBuilder<int>(
+                              valueListenable: elapsed,
+                              builder: (context, n, _) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
                                 ),
-                                if (r >= 5)
-                                  Positioned(
-                                    right: 8,
-                                    top: 7,
-                                    child: Glyph(
-                                      'star',
-                                      size: 11,
-                                      color: muted(context),
+                                decoration: BoxDecoration(
+                                  color: fg.withValues(alpha: .1),
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: label(
+                                  formatSeconds(n),
+                                  size: 11,
+                                  weight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Square(
+                              'settings',
+                              onTap: openSettings,
+                              tooltip: 'Настройки',
+                              size: compact ? 32 : 40,
+                            ),
+                          ],
+                        ),
+                        gap(compact ? 4 : 18),
+                        Row(
+                          spacing: 12,
+                          children: [
+                            for (final v in <(String, String, bool)>[
+                              (
+                                '${scope.length}',
+                                'Всего слов',
+                                settings['showStatTotal'] == true,
+                              ),
+                              (
+                                '$due',
+                                'К повторению',
+                                settings['showStatDue'] == true,
+                              ),
+                              (
+                                '$learned',
+                                'Пройдено сегодня',
+                                settings['showStatToday'] == true,
+                              ),
+                            ])
+                              if (v.$3)
+                                Expanded(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minHeight: compact ? 44 : 76,
+                                    ),
+                                    child: Surface(
+                                      radius: 12,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: compact ? 4 : 8,
+                                        vertical: compact ? 4 : 9,
+                                      ),
+                                      strong: true,
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          label(
+                                            v.$1,
+                                            size: 18,
+                                            weight: FontWeight.w700,
+                                          ),
+                                          gap(compact ? 2 : 4),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 90,
+                                            ),
+                                            child: label(
+                                              compact
+                                                  ? (v.$2 == 'Всего слов'
+                                                        ? 'Всего'
+                                                        : v.$2 == 'К повторению'
+                                                        ? 'Повторить'
+                                                        : 'Сегодня')
+                                                  : v.$2,
+                                              size: 11.2,
+                                              color: muted(context),
+                                              align: TextAlign.center,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                              ],
+                                ),
+                          ],
+                        ),
+                        gap(compact ? 4 : 18),
+                        StickerDeck(
+                          contentId: '${word['id']}',
+                          images: _pictures,
+                          height: _cardHeight,
+                          onMotionStart: () {
+                            _peeling = true;
+                            _beginCardMotion();
+                          },
+                          onMotionEnd: () {
+                            _peeling = false;
+                            _endCardMotion();
+                          },
+                          child: _NativeFlashcard(
+                            key: const ValueKey('study-flashcard'),
+                            contentId: '${word['id']}',
+                            height: _cardHeight,
+                            onSettled: _endCardMotion,
+                            back: back,
+                            onFlip: flip,
+                            front: KeyedSubtree(
+                              key: ValueKey('front-${word['id']}'),
+                              child: _front(),
+                            ),
+                            reverse: KeyedSubtree(
+                              key: ValueKey('back-${word['id']}'),
+                              child: _back(),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.only(top: 10),
-                  child: LinearProgressIndicator(minHeight: 2),
-                ),
-              if (settings['showProgress'] == true) ...[
-                gap(16),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: LinearProgressIndicator(
-                    value: queue.isEmpty ? 0 : index / queue.length,
-                    minHeight: 5,
-                    color: fg,
-                    backgroundColor: fg.withValues(alpha: .12),
+                        gap(compact ? 8 : 24),
+                        LayoutBuilder(
+                          builder: (context, c) => Wrap(
+                            spacing: spacing,
+                            runSpacing: spacing,
+                            children: [
+                              for (var r = 1; r <= 6; r++)
+                                SizedBox(
+                                  width:
+                                      (c.maxWidth - spacing * (columns - 1)) /
+                                      columns,
+                                  child: Tap(
+                                    label: ratingNames[r],
+                                    onTap: busy ? null : () => rate(r),
+                                    child: Container(
+                                      height: compact ? 40 : 56,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: fg.withValues(alpha: .85),
+                                        ),
+                                        color: prefsSchemeColor(r),
+                                      ),
+                                      child: Stack(
+                                        children: [
+                                          Center(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                label(
+                                                  ratingNames[r],
+                                                  size: 14,
+                                                  weight: FontWeight.w700,
+                                                ),
+                                                gap(2),
+                                                label(
+                                                  _intervalLabel(r),
+                                                  size: 12,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (r >= 5)
+                                            Positioned(
+                                              right: 8,
+                                              top: 7,
+                                              child: Glyph(
+                                                'star',
+                                                size: 11,
+                                                color: muted(context),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (busy && !savingRating)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 10),
+                            child: LinearProgressIndicator(minHeight: 2),
+                          ),
+                        if (settings['showProgress'] == true) ...[
+                          gap(compact ? 4 : 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: LinearProgressIndicator(
+                              value: queue.isEmpty ? 0 : index / queue.length,
+                              minHeight: 5,
+                              color: fg,
+                              backgroundColor: fg.withValues(alpha: .12),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ],
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: SessionNavigation(
-            store: widget.store,
-            prefs: widget.prefs,
-            onExit: () async {
-              await flush();
-              if (mounted) Navigator.pop(context);
-            },
-            listening: listening,
-          ),
-        ),
-      ],
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SessionNavigation(
+                store: widget.store,
+                prefs: widget.prefs,
+                onExit: () async {
+                  await flush();
+                  if (context.mounted) Navigator.pop(context);
+                },
+                listening: listening,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1410,6 +1612,16 @@ class _NativeStudyPageState extends State<NativeStudyPage>
         : null;
   }
 
+  double get _cardHeight => 280;
+
+  Color? get _cardPaper {
+    if (_pictures.isEmpty) return null;
+    final paper = _stickerPaperColor(context);
+    return settings['genderCardBackground'] == true && gender != null
+        ? Color.alphaBlend(gender!.withValues(alpha: .15), paper)
+        : paper;
+  }
+
   Widget _front() {
     final title = wordTitle(word),
         idiom = widget.kind == 'idioms',
@@ -1421,7 +1633,8 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           if (!idiom && settings['showEx2'] == true) '${word['ex2'] ?? ''}',
         ].where((e) => e.isNotEmpty).toList();
     final textStyle = TextStyle(
-      fontFamily: 'Roboto',
+      fontFamily: nativeFont(context),
+      fontFamilyFallback: const ['Roboto'],
       fontSize: title.length > 30
           ? 24
           : title.length > 22
@@ -1438,11 +1651,12 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           radius: 24,
           glass: GlassKind.card,
           strong: true,
+          background: _cardPaper,
           tint: settings['genderCardBackground'] == true ? gender : null,
           padding: const EdgeInsets.all(32),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 216),
-            child: Center(
+            constraints: BoxConstraints.tightFor(height: _cardHeight - 64),
+            child: _ReadableCardContent(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1538,31 +1752,34 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     radius: 24,
     glass: GlassKind.card,
     strong: true,
+    background: _cardPaper,
     tint: settings['genderCardBackground'] == true ? gender : null,
-    padding: const EdgeInsets.all(32),
+    padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
     child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 216),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          label(
-            '${word['translation'] ?? ''}',
-            size: '${word['translation'] ?? ''}'.length > 40 ? 21 : 25.6,
-            weight: FontWeight.w700,
-            align: TextAlign.center,
-          ),
-          if (widget.kind == 'idioms' &&
-              '${word['meaning'] ?? ''}'.isNotEmpty) ...[
-            gap(16),
+      constraints: BoxConstraints.tightFor(height: _cardHeight - 74),
+      child: _ReadableCardContent(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
             label(
-              '${word['meaning']}',
-              size: 17,
-              color: muted(context),
+              '${word['translation'] ?? ''}',
+              size: '${word['translation'] ?? ''}'.length > 40 ? 21 : 25.6,
+              weight: FontWeight.w700,
               align: TextAlign.center,
             ),
+            if (widget.kind == 'idioms' &&
+                '${word['meaning'] ?? ''}'.isNotEmpty) ...[
+              gap(16),
+              label(
+                '${word['meaning']}',
+                size: 17,
+                color: muted(context),
+                align: TextAlign.center,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     ),
   );
@@ -1682,15 +1899,138 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   }
 }
 
+/// Shrink modestly, then scroll rather than making examples illegible.
+class _ReadableCardContent extends StatefulWidget {
+  const _ReadableCardContent({required this.child});
+  final Widget child;
+  @override
+  State<_ReadableCardContent> createState() => _ReadableCardContentState();
+}
+
+class _ReadableCardContentState extends State<_ReadableCardContent> {
+  final controller = ScrollController();
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Scrollbar(
+      controller: controller,
+      thumbVisibility: true,
+      thickness: 3,
+      child: SingleChildScrollView(
+        controller: controller,
+        primary: false,
+        child: _CardContentFit(
+          viewportHeight: constraints.maxHeight,
+          child: widget.child,
+        ),
+      ),
+    ),
+  );
+}
+
+class _CardContentFit extends SingleChildRenderObjectWidget {
+  const _CardContentFit({required this.viewportHeight, required super.child});
+  final double viewportHeight;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderCardContentFit(viewportHeight);
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderCardContentFit renderObject,
+  ) {
+    renderObject.viewportHeight = viewportHeight;
+  }
+}
+
+class _RenderCardContentFit extends RenderProxyBox {
+  _RenderCardContentFit(this._viewportHeight);
+  double _viewportHeight, _scale = 1, _dy = 0;
+  set viewportHeight(double value) {
+    if (_viewportHeight == value) return;
+    _viewportHeight = value;
+    markNeedsLayout();
+  }
+
+  Matrix4 get _transform =>
+      Matrix4.diagonal3Values(_scale, _scale, 1)..setTranslationRaw(0, _dy, 0);
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    void measure(double scale) => child!.layout(
+      BoxConstraints.tightFor(width: width / scale),
+      parentUsesSize: true,
+    );
+    measure(1);
+    _scale = 1;
+    if (child!.size.height > _viewportHeight) {
+      // A 14.4 px example stays at least 13 px before the user's text scaling.
+      const minimum = 13 / 14.4;
+      var low = minimum, high = 1.0;
+      measure(low);
+      if (child!.size.height * low <= _viewportHeight) {
+        for (var i = 0; i < 7; i++) {
+          final mid = (low + high) / 2;
+          measure(mid);
+          if (child!.size.height * mid <= _viewportHeight) {
+            low = mid;
+          } else {
+            high = mid;
+          }
+        }
+      }
+      _scale = low;
+      measure(_scale);
+    }
+    size = constraints.constrain(
+      Size(width, math.max(_viewportHeight, child!.size.height * _scale)),
+    );
+    _dy = math.max(0, (size.height - child!.size.height * _scale) / 2);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    context.pushTransform(
+      needsCompositing,
+      offset,
+      _transform,
+      (context, offset) => context.paintChild(child!, offset),
+    );
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      result.addWithPaintTransform(
+        transform: _transform,
+        position: position,
+        hitTest: (result, position) =>
+            child!.hitTest(result, position: position),
+      );
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) =>
+      transform.multiply(_transform);
+}
+
 class _NativeFlashcard extends StatefulWidget {
   const _NativeFlashcard({
     super.key,
+    required this.contentId,
+    required this.height,
+    required this.onSettled,
     required this.back,
     required this.onFlip,
     required this.front,
     required this.reverse,
   });
   final bool back;
+  final String contentId;
+  final double height;
+  final VoidCallback onSettled;
   final VoidCallback onFlip;
   final Widget front, reverse;
   @override
@@ -1699,16 +2039,47 @@ class _NativeFlashcard extends StatefulWidget {
 
 class _NativeFlashcardState extends State<_NativeFlashcard>
     with SingleTickerProviderStateMixin {
+  Widget? outgoingReverse, outgoingFront;
   late final animation = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 500),
+    duration: const Duration(milliseconds: 600),
     value: widget.back ? 1 : 0,
   );
   @override
+  void initState() {
+    super.initState();
+    animation.addStatusListener((status) {
+      if (status != AnimationStatus.completed &&
+          status != AnimationStatus.dismissed) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !animation.isAnimating) widget.onSettled();
+      });
+    });
+  }
+
+  @override
   void didUpdateWidget(_NativeFlashcard old) {
     super.didUpdateWidget(old);
+    if (widget.contentId != old.contentId) {
+      // Keep the rated translation visible until the rotating card reveals
+      // the next word, rather than flashing the next translation first.
+      outgoingReverse = animation.value >= .5 ? old.reverse : null;
+      outgoingFront = animation.value < .5 ? old.front : null;
+    } else if (widget.back != old.back) {
+      outgoingReverse = null;
+      outgoingFront = null;
+    }
     if (widget.back != old.back) {
-      animation.animateTo(widget.back ? 1 : 0, curve: Curves.easeInOutCubic);
+      if (MediaQuery.disableAnimationsOf(context)) {
+        animation.value = widget.back ? 1 : 0;
+        return;
+      }
+      animation.animateTo(
+        widget.back ? 1 : 0,
+        curve: const Cubic(.4, .2, .2, 1),
+      );
     }
   }
 
@@ -1719,51 +2090,46 @@ class _NativeFlashcardState extends State<_NativeFlashcard>
   }
 
   @override
-  Widget build(BuildContext context) => Tap(
-    label: 'Перевернуть карточку',
-    onTap: widget.onFlip,
-    child: RepaintBoundary(
+  Widget build(BuildContext context) {
+    // Build/layout each face once; only the rotation changes on animation ticks.
+    final faces = [
+      RepaintBoundary(
+        child: widget.back && outgoingFront != null
+            ? outgoingFront!
+            : widget.front,
+      ),
+      Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.rotationY(math.pi),
+        child: RepaintBoundary(
+          child: !widget.back && outgoingReverse != null
+              ? outgoingReverse!
+              : widget.reverse,
+        ),
+      ),
+    ];
+    return Tap(
+      label: 'Перевернуть карточку',
+      onTap: widget.onFlip,
       child: AnimatedBuilder(
         animation: animation,
-        builder: (context, _) {
-          final t = animation.value, isBack = t >= .5;
-          return Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, .0015)
-              ..rotateY(t * math.pi),
-            child: Stack(
-              children: [
-                Visibility(
-                  visible: false,
-                  maintainState: true,
-                  maintainAnimation: true,
-                  maintainSize: true,
-                  child: widget.front,
-                ),
-                Visibility(
-                  visible: false,
-                  maintainState: true,
-                  maintainAnimation: true,
-                  maintainSize: true,
-                  child: widget.reverse,
-                ),
-                Positioned.fill(
-                  child: isBack
-                      ? Transform(
-                          alignment: Alignment.center,
-                          transform: Matrix4.rotationY(math.pi),
-                          child: widget.reverse,
-                        )
-                      : widget.front,
-                ),
-              ],
+        builder: (context, _) => Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, -1 / 1500)
+            ..rotateY(animation.value * math.pi),
+          child: SizedBox(
+            height: widget.height,
+            child: IndexedStack(
+              index: animation.value >= .5 ? 1 : 0,
+              sizing: StackFit.expand,
+              children: faces,
             ),
-          );
-        },
+          ),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _HighlightedExample extends StatelessWidget {
@@ -1799,7 +2165,8 @@ class _HighlightedExample extends StatelessWidget {
     return Text.rich(
       TextSpan(
         style: TextStyle(
-          fontFamily: 'Roboto',
+          fontFamily: nativeFont(context),
+          fontFamilyFallback: const ['Roboto'],
           fontSize: 14.4,
           height: 1.4,
           color: muted(context),

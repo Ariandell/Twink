@@ -44,6 +44,41 @@ class TwinkStore extends ChangeNotifier {
   DateTime _expiry = DateTime(2000);
   Future<void>? _refreshing;
   Timer? _poll;
+  int _dataRevision = 0;
+  int _visualHolds = 0;
+  bool _notificationPending = false;
+  bool _disposed = false;
+  Completer<void>? _visualIdle;
+
+  /// Let short card transitions finish before rebuilding dictionary screens.
+  VoidCallback holdVisualUpdates() {
+    _visualHolds++;
+    _visualIdle ??= Completer<void>();
+    var released = false;
+    return () {
+      if (released) return;
+      released = true;
+      if (--_visualHolds != 0) return;
+      final idle = _visualIdle;
+      _visualIdle = null;
+      if (_notificationPending && !_disposed) {
+        _notificationPending = false;
+        super.notifyListeners();
+      }
+      idle?.complete();
+    };
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    if (_visualHolds > 0) {
+      _notificationPending = true;
+    } else {
+      super.notifyListeners();
+    }
+  }
+
   bool loading = true, demo = false, _fetching = false;
   String? syncError;
   Json? data;
@@ -180,15 +215,16 @@ class TwinkStore extends ChangeNotifier {
   }
 
   Future<void> reload() async {
-    if (demo || uid == null || _fetching) return;
-    final id = uid;
+    if (demo || uid == null || _fetching || _visualHolds > 0) return;
+    final id = uid, revision = _dataRevision;
     _fetching = true;
     try {
       final response = await _client
           .get(await _uri())
           .timeout(const Duration(seconds: 20));
+      await _visualIdle?.future;
       final next = _decode(response);
-      if (uid == id && !demo) {
+      if (uid == id && !demo && revision == _dataRevision) {
         final changed =
             jsonEncode(data) != jsonEncode(next) || syncError != null;
         data = next;
@@ -325,13 +361,48 @@ class TwinkStore extends ChangeNotifier {
     throw Exception('Словник одночасно змінюється. Спробуйте ще раз.');
   }
 
-  Future<void> progress(String kind, String id, Json? p) => patch({
-    '$kind/$id/progress_global': p,
-    if (kind == 'words') ...{
-      'words/$id/interval': p?['interval'] ?? 0,
-      'words/$id/nextDate': p?['nextDate'] ?? 0,
-    },
-  });
+  Future<void> progress(String kind, String id, Json? p) async {
+    final changes = <String, dynamic>{
+      '$kind/$id/progress_global': p,
+      if (kind == 'words') ...{
+        'words/$id/interval': p?['interval'] ?? 0,
+        'words/$id/nextDate': p?['nextDate'] ?? 0,
+      },
+    };
+    final owner = uid, wasDemo = demo;
+    if (!wasDemo) {
+      final response = await _client
+          .patch(
+            await _uri(),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(changes),
+          )
+          .timeout(const Duration(seconds: 25));
+      _decode(response);
+    }
+    if (uid != owner || demo != wasDemo) return;
+    // Apply only acknowledged fields. No second download of the dictionary.
+    final next = Map<String, dynamic>.from(data ?? {});
+    for (final entry in changes.entries) {
+      final parts = entry.key.split('/');
+      var cursor = next;
+      for (final part in parts.take(parts.length - 1)) {
+        final branch = asMap(cursor[part]);
+        cursor[part] = branch;
+        cursor = branch;
+      }
+      if (entry.value == null) {
+        cursor.remove(parts.last);
+      } else {
+        cursor[parts.last] = entry.value;
+      }
+    }
+    data = next;
+    _dataRevision++;
+    syncError = null;
+    notifyListeners();
+  }
+
   Future<void> importRecords(String kind, List<List<dynamic>> rows) async {
     for (var attempt = 0; attempt < 5; attempt++) {
       final uri = demo ? null : await _uri(kind);
@@ -428,6 +499,7 @@ class TwinkStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _poll?.cancel();
     _client.close();
     super.dispose();

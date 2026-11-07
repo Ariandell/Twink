@@ -291,6 +291,26 @@ extension _SettingsView on _NativeHomeState {
         ],
       ),
       gap(32),
+      label('Шрифт', size: 20, weight: FontWeight.w700),
+      gap(12),
+      DropdownButtonFormField<String>(
+        key: ValueKey('font-choice-${prefs.fontFamily}'),
+        initialValue: prefs.fontFamily,
+        items: const [
+          DropdownMenuItem(
+            value: 'Roboto',
+            child: Text('Roboto · версия 0.3.1'),
+          ),
+          DropdownMenuItem(
+            value: 'Outfit',
+            child: Text('Outfit · текущая версия'),
+          ),
+        ],
+        onChanged: (value) {
+          if (value != null) prefs.set('fontFamily', value);
+        },
+      ),
+      gap(32),
       label('Цветовая схема', size: 20, weight: FontWeight.w700),
       gap(8),
       label(
@@ -530,10 +550,12 @@ class _AccountFieldState extends State<_AccountField> {
 class _SessionSettings extends StatefulWidget {
   const _SessionSettings({
     required this.store,
+    required this.prefs,
     this.voiceOn = false,
     this.onVoice,
   });
   final TwinkStore store;
+  final NativePreferences prefs;
   final bool voiceOn;
   final Future<void> Function()? onVoice;
   @override
@@ -541,6 +563,7 @@ class _SessionSettings extends StatefulWidget {
 }
 
 class _SessionSettingsState extends State<_SessionSettings> {
+  late String draftFont = widget.prefs.fontFamily;
   late Json draft = {...originalSettings, ...widget.store.settings};
   late bool voice = widget.voiceOn;
   bool saving = false;
@@ -579,6 +602,9 @@ class _SessionSettingsState extends State<_SessionSettings> {
     setState(() => saving = true);
     try {
       await widget.store.patch({'settings/study': draft});
+      if (draftFont != widget.prefs.fontFamily) {
+        widget.prefs.set('fontFamily', draftFont);
+      }
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -715,7 +741,7 @@ class _SessionSettingsState extends State<_SessionSettings> {
     Map<String, String> options,
     ValueChanged<String> change,
   ) => Container(
-    height: 34,
+    height: 44,
     padding: const EdgeInsets.symmetric(horizontal: 8),
     decoration: BoxDecoration(
       color: ink(context).withValues(alpha: .05),
@@ -727,7 +753,8 @@ class _SessionSettingsState extends State<_SessionSettings> {
         value: options.containsKey(value) ? value : options.keys.first,
         isExpanded: true,
         style: TextStyle(
-          fontFamily: 'Roboto',
+          fontFamily: nativeFont(context),
+          fontFamilyFallback: const ['Roboto'],
           fontSize: 13,
           color: ink(context),
         ),
@@ -870,6 +897,26 @@ class _SessionSettingsState extends State<_SessionSettings> {
                     ]),
                   ),
                   section('ОФОРМЛЕНИЕ'),
+                  label('Шрифт', size: 14, weight: FontWeight.w500),
+                  gap(6),
+                  KeyedSubtree(
+                    key: const ValueKey('session-font-choice'),
+                    child: _select(draftFont, const {
+                      'Roboto': 'Roboto · версия 0.3.1',
+                      'Outfit': 'Outfit · текущая версия',
+                    }, (value) => setState(() => draftFont = value)),
+                  ),
+                  gap(12),
+                  label('Первая сторона', size: 14, weight: FontWeight.w500),
+                  gap(6),
+                  KeyedSubtree(
+                    key: const ValueKey('first-side-selector'),
+                    child: _select('${draft['firstSide']}', const {
+                      'word': 'Немецкое слово',
+                      'translation': 'Перевод',
+                    }, (value) => setState(() => draft['firstSide'] = value)),
+                  ),
+                  gap(12),
                   toggle('genderColors', 'Подсветка слова по роду'),
                   toggle('genderCardBackground', 'Подсветка карточки по роду'),
                   toggle(

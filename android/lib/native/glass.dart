@@ -7,29 +7,43 @@ class _LiquidExpansion extends StatelessWidget {
   final bool open;
   final Widget child;
   @override
-  Widget build(BuildContext context) => ClipRect(
-    child: AnimatedSize(
-      duration: Duration(
-        milliseconds: MediaQuery.disableAnimationsOf(context) ? 0 : 650,
-      ),
-      alignment: Alignment.topCenter,
-      curve: const Cubic(.16, 1, .3, 1),
-      child: open
-          ? TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 450),
-              child: child,
-              builder: (context, t, body) => Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, -8 * (1 - t)),
-                  child: body,
+  Widget build(BuildContext context) {
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    const curve = Cubic(.16, 1, .3, 1);
+    return ClipRect(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: open ? 1 : 0, end: open ? 1 : 0),
+        duration: Duration(milliseconds: reduce ? 0 : 800),
+        curve: curve,
+        child: IgnorePointer(
+          ignoring: !open,
+          child: ExcludeSemantics(
+            excluding: !open,
+            child: AnimatedOpacity(
+              opacity: open ? 1 : 0,
+              duration: Duration(milliseconds: reduce ? 0 : 600),
+              curve: curve,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: open ? 1 : 0, end: open ? 1 : 0),
+                duration: Duration(milliseconds: reduce ? 0 : 700),
+                curve: curve,
+                child: child,
+                builder: (context, t, body) => Transform.translate(
+                  offset: Offset(0, -15 * (1 - t)),
+                  child: Transform.scale(scale: .97 + .03 * t, child: body),
                 ),
               ),
-            )
-          : const SizedBox(width: double.infinity),
-    ),
-  );
+            ),
+          ),
+        ),
+        builder: (context, t, body) => Align(
+          alignment: Alignment.topCenter,
+          heightFactor: t,
+          child: Offstage(offstage: t == 0, child: body),
+        ),
+      ),
+    );
+  }
 }
 
 /// The original material: a transparent surface, dark depth, diagonal glare,
@@ -241,7 +255,7 @@ class GlassNavigation extends StatelessWidget {
               weight: selected == i ? FontWeight.w700 : FontWeight.w500,
               color: color,
             )
-          : Glyph(icons[i], size: 22, color: color),
+          : Glyph(icons[i], size: 18, color: color),
     );
     final base = Row(
       children: [
@@ -273,7 +287,7 @@ class GlassNavigation extends StatelessWidget {
           radius: 99,
           blur: 25,
           child: SizedBox(
-            height: wide ? 70 : 60,
+            height: wide ? 70 : 56,
             child: Padding(
               padding: const EdgeInsets.all(4),
               child: LayoutBuilder(

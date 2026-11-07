@@ -328,7 +328,7 @@ extension _DictionaryView on _NativeHomeState {
         isIdiom = kind == 'idioms';
     return Surface(
       radius: 10,
-      padding: const EdgeInsets.fromLTRB(10, 8, 8, 9),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -342,6 +342,7 @@ extension _DictionaryView on _NativeHomeState {
               ),
               Square(
                 'edit',
+                color: muted(context),
                 size: 28,
                 border: false,
                 tooltip: 'Редактировать',
@@ -349,6 +350,7 @@ extension _DictionaryView on _NativeHomeState {
               ),
               Square(
                 'trash',
+                color: const Color(0xffef4444),
                 size: 28,
                 border: false,
                 tooltip: 'Удалить',
@@ -389,7 +391,7 @@ extension _DictionaryView on _NativeHomeState {
             if ('${w[field] ?? ''}'.isNotEmpty &&
                 visibleColumns.contains(field))
               Padding(
-                padding: const EdgeInsets.only(top: 7),
+                padding: const EdgeInsets.only(top: 9),
                 child: Container(
                   padding: const EdgeInsets.only(left: 7),
                   decoration: BoxDecoration(

@@ -6,6 +6,8 @@ import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -27,6 +29,7 @@ part 'exam_help.dart';
 part 'glass.dart';
 part 'parity.dart';
 part 'learning_guide.dart';
+part 'sticker_deck.dart';
 
 Uint8List _encodeExport((List<Json>, String) input) =>
     encodeSpreadsheet(input.$1, input.$2);
@@ -49,6 +52,7 @@ const originalSettings = <String, dynamic>{
   'showStatDue': true,
   'showStatToday': true,
   'masterCard': false,
+  'firstSide': 'word',
   'masterInterface': false,
   'masterAudio': true,
   'includeActive': false,
@@ -81,6 +85,8 @@ class NativePreferences extends ChangeNotifier {
   final bool persistent;
   final Json values = {};
   Timer? _save;
+  String get fontFamily =>
+      values['fontFamily'] == 'Roboto' ? 'Roboto' : 'Outfit';
   bool get light => values['theme'] == 'light';
   String get scheme => '${values['scheme'] ?? 'pure-black'}';
   Future<void> load() async {
@@ -98,9 +104,9 @@ class NativePreferences extends ChangeNotifier {
     notifyListeners();
   }
 
-  void set(String key, dynamic value) {
+  void set(String key, dynamic value, {bool notify = true}) {
     values[key] = value;
-    notifyListeners();
+    if (notify) notifyListeners();
     _save?.cancel();
     if (persistent) {
       _save = Timer(
@@ -178,10 +184,16 @@ class _NativeTwinkAppState extends State<NativeTwinkApp> {
         theme: ThemeData(
           useMaterial3: true,
           brightness: light ? Brightness.light : Brightness.dark,
-          fontFamily: 'Roboto',
+          fontFamily: prefs.fontFamily,
+          fontFamilyFallback: const ['Roboto'],
           extensions: [TwinkPalette(prefs.scheme, light)],
           textTheme: (light ? ThemeData.light() : ThemeData.dark()).textTheme
-              .apply(fontFamily: 'Roboto', bodyColor: fg, displayColor: fg),
+              .apply(
+                fontFamily: prefs.fontFamily,
+                fontFamilyFallback: const ['Roboto'],
+                bodyColor: fg,
+                displayColor: fg,
+              ),
           scaffoldBackgroundColor: light ? Colors.white : Colors.black,
           colorScheme:
               ColorScheme.fromSeed(
@@ -254,6 +266,9 @@ Color muted(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? const Color(0xff9ca3af)
     : const Color(0xff4b5563);
 Widget gap([double h = 12]) => SizedBox(height: h);
+String nativeFont(BuildContext context) =>
+    Theme.of(context).textTheme.bodyMedium?.fontFamily ?? 'Outfit';
+
 Text label(
   String value, {
   double size = 14,
@@ -537,8 +552,49 @@ class NativeHome extends StatefulWidget {
 }
 
 class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
+  final _tabBodies = <int, Widget>{};
+  final _dirtyTabs = <int>{};
   void update(VoidCallback change) {
+    _dirtyTabs.addAll(_tabBodies.keys);
     if (mounted) setState(change);
+  }
+
+  void _invalidateTabs() {
+    _dirtyTabs.addAll(_tabBodies.keys);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dirtyTabs.addAll(_tabBodies.keys);
+  }
+
+  Widget _tabBody(int index) {
+    if (!_tabBodies.containsKey(index) || _dirtyTabs.remove(index)) {
+      _tabBodies[index] = BackdropGroup(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: index == 0
+                  ? 1200
+                  : index == 1
+                  ? 900
+                  : 1100,
+            ),
+            child: switch (index) {
+              0 => _profile(),
+              1 => _studyDashboard(),
+              2 => _dictionary(),
+              3 => _importPage(),
+              _ => _settingsPage(),
+            },
+          ),
+        ),
+      );
+    }
+    return _tabBodies[index]!;
   }
 
   int tab = 0, settingsTab = 0;
@@ -569,7 +625,28 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
       ...list.map((w) => '${w['folder'] ?? ''}').where((f) => f.isNotEmpty),
       ...meta.entries.map((e) => '${asMap(e.value)['name'] ?? e.key}'),
     }.toList();
-    names.sort((a, b) => compareFolders(a, b, list, folderOrder));
+    final firstIds = <String, num>{};
+    if (folderOrder != 'alphabet') {
+      for (final word in list) {
+        final name = word['folder']?.toString() ?? '';
+        final id =
+            num.tryParse(
+              RegExp(r'^\d+').firstMatch(word['id'].toString())?.group(0) ?? '',
+            ) ??
+            0;
+        firstIds.update(
+          name,
+          (previous) => math.min(previous, id),
+          ifAbsent: () => id,
+        );
+      }
+    }
+    names.sort((a, b) {
+      if (folderOrder == 'alphabet') return naturalCompare(a, b);
+      final comparison = (firstIds[a] ?? 0).compareTo(firstIds[b] ?? 0);
+      return (comparison == 0 ? naturalCompare(a, b) : comparison) *
+          (folderOrder == 'newest' ? -1 : 1);
+    });
     return names;
   }
 
@@ -577,6 +654,8 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    store.addListener(_invalidateTabs);
+    prefs.addListener(_invalidateTabs);
     tab = number(prefs.values['tab']).toInt().clamp(0, 4);
     folderGrid = prefs.values['folderGrid'] == true;
     folderOrder = '${prefs.values['folderOrder'] ?? 'newest'}';
@@ -598,6 +677,8 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    store.removeListener(_invalidateTabs);
+    prefs.removeListener(_invalidateTabs);
     searches.dispose();
     super.dispose();
   }
@@ -611,9 +692,11 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
   }
 
   void selectTab(int value) {
+    if (value == tab) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     audio.speech.stop();
     setState(() => tab = value);
-    prefs.set('tab', value);
+    prefs.set('tab', value, notify: false);
   }
 
   @override
@@ -628,29 +711,29 @@ class _NativeHomeState extends State<NativeHome> with WidgetsBindingObserver {
               children: [
                 if (wide) _navigation(wide: true),
                 Expanded(
-                  child: ListenableBuilder(
-                    listenable: store,
-                    builder: (context, _) => BackdropGroup(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxWidth: tab == 0
-                                ? 1200
-                                : tab == 1
-                                ? 900
-                                : 1100,
-                          ),
-                          child: switch (tab) {
-                            0 => _profile(),
-                            1 => _studyDashboard(),
-                            2 => _dictionary(),
-                            3 => _importPage(),
-                            _ => _settingsPage(),
-                          },
-                        ),
-                      ),
-                    ),
+                  child: Builder(
+                    builder: (context) {
+                      _tabBody(tab);
+                      return Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          for (var i = 0; i < 5; i++)
+                            if (_tabBodies.containsKey(i))
+                              Offstage(
+                                key: ValueKey('home-tab-$i'),
+                                offstage: tab != i,
+                                child: TickerMode(
+                                  enabled: tab == i,
+                                  child: RepaintBoundary(
+                                    child: i == tab
+                                        ? _tabBody(i)
+                                        : _tabBodies[i]!,
+                                  ),
+                                ),
+                              ),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
