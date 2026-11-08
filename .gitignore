@@ -19,6 +19,7 @@
 **/coverage/
 /cometa/target/
 /cometa/android/out/
+/cometa/android-launch-check/
 web/public/classic/vendor/firebase-compat.js
 web/public/classic/vendor/twink-bridge.js
 android/assets/classic/

@@ -146,9 +146,21 @@ impl GpuWindow {
         Ok(())
     }
     fn logical(&self) -> (f32, f32) {
-        let size = self.window.inner_size();
+        let area = self.content_area();
         let scale = self.window.scale_factor() as f32;
-        (size.width as f32 / scale, size.height as f32 / scale)
+        (area.width() / scale, area.height() / scale)
+    }
+    fn content_area(&self) -> sk::Rect {
+        #[cfg(target_os = "android")]
+        {
+            use winit::platform::android::WindowExtAndroid;
+            let r = self.window.content_rect();
+            if r.right > r.left && r.bottom > r.top {
+                return sk::Rect::new(r.left as f32, r.top as f32, r.right as f32, r.bottom as f32);
+            }
+        }
+        let s = self.window.inner_size();
+        sk::Rect::from_wh(s.width as f32, s.height as f32)
     }
 }
 
@@ -311,7 +323,11 @@ impl ApplicationHandler for Application {
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(g) = &self.gpu {
                     let scale = g.window.scale_factor() as f32;
-                    self.cursor = (position.x as f32 / scale, position.y as f32 / scale);
+                    let area = g.content_area();
+                    self.cursor = (
+                        (position.x as f32 - area.left) / scale,
+                        (position.y as f32 - area.top) / scale,
+                    );
                 }
             }
             WindowEvent::MouseInput {
@@ -333,7 +349,11 @@ impl ApplicationHandler for Application {
             WindowEvent::Touch(t) => {
                 if let Some(g) = &self.gpu {
                     let scale = g.window.scale_factor() as f32;
-                    let p = (t.location.x as f32 / scale, t.location.y as f32 / scale);
+                    let area = g.content_area();
+                    let p = (
+                        (t.location.x as f32 - area.left) / scale,
+                        (t.location.y as f32 - area.top) / scale,
+                    );
                     match t.phase {
                         TouchPhase::Started => self.down = Some(p),
                         TouchPhase::Ended => {
@@ -392,10 +412,14 @@ impl ApplicationHandler for Application {
                     }
                 }
                 let (w, h) = g.logical();
+                let area = g.content_area();
                 let c = g.surface.canvas();
+                c.clear(sk::Color::BLACK);
                 c.save();
+                c.clip_rect(area, None, true);
                 let scale = g.window.scale_factor() as f32;
                 c.scale((scale, scale));
+                c.translate((area.left / scale, area.top / scale));
                 let prepare = Instant::now();
                 renderer.draw(c, w, h, &self.session, now);
                 self.last_motion_value = self.session.motion.value(now);
@@ -403,11 +427,7 @@ impl ApplicationHandler for Application {
                 if self.smoke {
                     self.frames.push(prepare.elapsed().as_secs_f64() * 1000.0);
                 }
-                if let Err(e) = g.gr.flush_and_submit() {
-                    eprintln!("GPU flush: {e:?}");
-                    event_loop.exit();
-                    return;
-                }
+                g.gr.flush_and_submit();
                 if let Err(e) = g.gl_surface.swap_buffers(&g.context) {
                     eprintln!("Present: {e}");
                     event_loop.exit();

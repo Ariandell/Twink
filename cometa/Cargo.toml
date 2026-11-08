@@ -1,6 +1,6 @@
 [package]
 name = "twink-cometa"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 publish = false
 
@@ -13,7 +13,7 @@ name = "cometa-preview"
 path = "src/main.rs"
 
 [dependencies]
-skia-safe = { version = "=0.157.0", features = ["gl", "textlayout"] }
+skia-safe = { version = "=0.90.0", features = ["gl", "textlayout"] }
 winit = { version = "0.30", features = ["android-native-activity"] }
 glutin = "0.32"
 glutin-winit = "0.5"

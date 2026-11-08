@@ -23,12 +23,7 @@ fn paint(color: Color) -> Paint {
     p
 }
 fn linear(points: ((f32, f32), (f32, f32)), colors: &[Color]) -> Option<sk::Shader> {
-    let values: Vec<sk::Color4f> = colors.iter().copied().map(Into::into).collect();
-    let gradient = sk::gradient::Gradient::new(
-        sk::gradient::Colors::new_evenly_spaced(&values, TileMode::Clamp, None),
-        sk::gradient::Interpolation::default(),
-    );
-    sk::gradient::shaders::linear_gradient(points, &gradient, None)
+    sk::gradient_shader::linear(points, colors, None, TileMode::Clamp, None, None)
 }
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::from_xywh(x, y, w, h)
@@ -96,9 +91,7 @@ impl Renderer {
                 include_bytes!("../../android/assets/fonts/roboto-italic.ttf").as_slice(),
             ),
         ] {
-            let face = mgr
-                .new_from_data(sk::Data::new_copy(bytes), None)
-                .expect("bundled font");
+            let face = mgr.new_from_data(bytes, None).expect("bundled font");
             provider.register_typeface(face, Some(family));
         }
         let mut fonts = FontCollection::new();
@@ -223,7 +216,7 @@ impl Renderer {
             },
         ));
         let coords = [sk::font_arguments::variation_position::Coordinate {
-            axis: sk::font_arguments::variation_position::Coordinate::wght,
+            axis: sk::FourByteTag::from_chars('w', 'g', 'h', 't'),
             value: weight as f32,
         }];
         let args = sk::FontArguments::new().set_variation_design_position(
@@ -416,14 +409,13 @@ impl Renderer {
         c.clear(Color::BLACK);
         let colors = [rgba(21, 19, 34, 200), rgba(7, 6, 12, 0)];
         let mut p = paint(WHITE);
-        let values: Vec<sk::Color4f> = colors.iter().copied().map(Into::into).collect();
-        let gradient = sk::gradient::Gradient::new(
-            sk::gradient::Colors::new_evenly_spaced(&values, TileMode::Clamp, None),
-            sk::gradient::Interpolation::default(),
-        );
-        p.set_shader(sk::gradient::shaders::radial_gradient(
-            ((w * 0.48, h * 0.95), h * 0.55),
-            &gradient,
+        p.set_shader(sk::gradient_shader::radial(
+            (w * 0.48, h * 0.95),
+            h * 0.55,
+            colors.as_slice(),
+            None,
+            TileMode::Clamp,
+            None,
             None,
         ));
         c.draw_rect(rect(0.0, 0.0, w, h), &p);
