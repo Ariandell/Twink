@@ -2,17 +2,24 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 const root = new URL('../../android/assets/icons/', import.meta.url);
 await mkdir(root, {recursive:true});
 const html = await readFile(new URL('../public/classic/index.html',import.meta.url),'utf8');
-const buttons={user:'nav-profile-btn',book:'nav-dictionary-btn',play:'nav-study-btn',upload:'nav-import-btn',settings:'nav-settings-btn',back:'btn-exit-session',edit:'btn-flashcard-edit',volume:'btn-quick-toggle-audio',filter:'dict-mobile-filter-toggle',close:'btn-close-settings',help:'btn-exam-help'};
+const buttons={user:'nav-profile-btn',book:'nav-dictionary-btn',play:'nav-study-btn',upload:'nav-import-btn',settings:'nav-settings-btn',back:'btn-exit-session',volume:'btn-quick-toggle-audio',filter:'dict-mobile-filter-toggle',close:'btn-close-settings',help:'btn-exam-help'};
 for(const [name,id] of Object.entries(buttons)){
  const start=html.indexOf(`id="${id}"`),svg=html.slice(start).match(/<svg[\s\S]*?<\/svg>/)?.[0];
  if(svg) await writeFile(new URL(name+'.svg',root),svg.replace(/stroke="currentColor"/g,'stroke="#ffffff"'));
+}
+// Keep dictionary action contours identical to the original word/idiom lists.
+const dictionary = await readFile(new URL('../public/classic/app.js', import.meta.url), 'utf8');
+for (const [name, className] of Object.entries({edit: 'btn-edit', trash: 'btn-delete'})) {
+ const button = dictionary.match(new RegExp(`<button class="btn-icon ${className}"[\\s\\S]*?<\\/button>`))?.[0];
+ const svg = button?.match(/<svg[\s\S]*?<\/svg>/)?.[0];
+ if (!svg) throw new Error(`Original dictionary icon not found: ${className}`);
+ await writeFile(new URL(name + '.svg', root), svg.replace(/stroke="currentColor"/g, 'stroke="#ffffff"'));
 }
 const paths={
  chat:'<path d="M21 15a2 2 0 0 1-2 2H7l-5 5V5a2 2 0 0 1 2-2h15a2 2 0 0 1 2 2Z"/>',
  'check-circle':'<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3"/>',
  plus:'<path d="M12 5v14M5 12h14"/>',
  check:'<polyline points="20 6 9 17 4 12"/>',
- trash:'<path d="M3 6h18M19 6l-1 14H6L5 6M9 6V3h6v3M10 10v7M14 10v7"/>',
  search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.4-4.4"/>',
  download:'<path d="M12 3v12m-5-5 5 5 5-5M5 15v6h14v-6"/>',
  grid:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',

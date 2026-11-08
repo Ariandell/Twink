@@ -8,6 +8,13 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:twink_android/domain.dart';
+import 'package:twink_android/dwds_dictionary.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+
+import 'fixtures/dwds_article.dart';
+
+import 'package:twink_android/word_metrics.dart';
 import 'package:twink_android/native/app.dart';
 import 'package:twink_android/repository.dart';
 
@@ -20,6 +27,17 @@ class _DelayedProgressStore extends TwinkStore {
   }
 }
 
+class _DelayedTimeStore extends TwinkStore {
+  Completer<void>? pendingTime;
+  final savedTimes = <int>[];
+  @override
+  Future<void> addTime(int seconds) async {
+    await pendingTime?.future;
+    savedTimes.add(seconds);
+    await super.addTime(seconds);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const capture = Key('capture');
@@ -29,6 +47,7 @@ void main() {
     int tab = 0,
     bool signedIn = true,
     TwinkStore? suppliedStore,
+    DwdsDictionary? dictionary,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -44,6 +63,9 @@ void main() {
       'Outfit',
     )..addFont(rootBundle.load('assets/fonts/outfit-variable.ttf'))).load();
     await tester.runAsync(StickerDeck.preloadPictures);
+    await tester.runAsync(DwdsFrequencyRepository.preload);
+    await tester.runAsync(DwdsDictionary.preload);
+    await tester.runAsync(DwdsDictionary.known);
     final store = (suppliedStore ?? TwinkStore())..startDemo();
     store.demo = signedIn;
     store.data = asMap(
@@ -59,6 +81,9 @@ void main() {
       }
     }
     final prefs = NativePreferences(persistent: false)
+      ..values['dwdsFrequency'] = asMap(
+        jsonDecode(File('assets/data/dwds-frequency.json').readAsStringSync()),
+      )
       ..values['tab'] = tab
       ..values['session-words-all'] = {
         'ids': ['1', '2', '4'],
@@ -67,7 +92,11 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: capture,
-        child: NativeTwinkApp(store: store, preferences: prefs),
+        child: NativeTwinkApp(
+          store: store,
+          preferences: prefs,
+          dictionary: dictionary,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -427,6 +456,587 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'experimental metrics layouts combine progress and keep fixed cards',
+    (tester) async {
+      final (store, prefs) = await launch(tester, tab: 1);
+      await store.patch({
+        'words/4/progress_global/recentRatings': [2, 3, 4, 5],
+        'words/4/progress_global/excellentStreak': 4.5,
+      });
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      for (final rating in [2, 5]) {
+        await tester.tap(
+          find.byWidgetPredicate(
+            (w) => w is Tap && w.label == ratingNames[rating],
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('sich erinnern'), findsOneWidget);
+      final card = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'Перевернуть карточку',
+      );
+      final cardSize = tester.getSize(card);
+      for (final variant in [
+        ('Капсула над навигацией', 'ribbon'),
+        ('Три плитки', 'tiles'),
+        ('Под карточкой', 'underCard'),
+      ]) {
+        await tester.tap(find.byTooltip('Вариант нижней панели'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(variant.$1));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(card), cardSize);
+        expect(tester.getRect(card).height, 280);
+        expect(
+          find.byKey(const ValueKey('session-integrated-progress')),
+          findsOneWidget,
+        );
+        expect(
+          find.ancestor(of: card, matching: find.byType(Scrollable)),
+          findsNothing,
+        );
+        expect(
+          find.byTooltip('Частотность DWDS').hitTestable(),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await screenshot(tester, 'metrics-${variant.$2}');
+      }
+      expect(prefs.values['studyMetricsLayout'], 'underCard');
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is Tap && w.label == 'Частотность DWDS',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Ступень 5 из 7'), findsOneWidget);
+      Navigator.of(tester.element(find.text('Понятно'))).pop();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Выйти'));
+      await tester.pumpAndSettle();
+      expect(find.text('entdecken'), findsOneWidget);
+      expect(tester.getRect(card).height, 280);
+    },
+  );
+
+  testWidgets(
+    'metrics layouts respect phone safe areas and keep all ratings usable',
+    (tester) async {
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+      addTearDown(tester.view.resetPadding);
+      await launch(tester, tab: 1);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      final card = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'Перевернуть карточку',
+      );
+      for (final variant in [
+        'Капсула над навигацией',
+        'Три плитки',
+        'Под карточкой',
+      ]) {
+        await tester.tap(find.byTooltip('Вариант нижней панели'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(variant));
+        await tester.pumpAndSettle();
+        expect(tester.getRect(card).height, closeTo(280, .01));
+        final bar = tester.getRect(
+          find.byKey(const ValueKey('study-accessory')),
+        );
+        expect(
+          bar.bottom,
+          lessThan(tester.getTopLeft(find.byType(SessionNavigation)).dy),
+        );
+        for (final rating in ratingNames.skip(1)) {
+          expect(
+            find
+                .byWidgetPredicate((w) => w is Tap && w.label == rating)
+                .hitTestable(),
+            findsOneWidget,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      }
+      await screenshot(tester, 'metrics-safe-area');
+    },
+  );
+
+  testWidgets(
+    'widget settings save, cancel and fit every style and position on a phone',
+    (tester) async {
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 24);
+      addTearDown(tester.view.resetPadding);
+      final (_, prefs) = await launch(tester, tab: 1);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      await screenshot(tester, 'final-0.3.14-card');
+      final card = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'Перевернуть карточку',
+      );
+      Future<void> open() async {
+        await tester.tap(
+          find.byWidgetPredicate((w) => w is Square && w.icon == 'settings'),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> choose(String key, String value) async {
+        final selector = find.byKey(ValueKey(key));
+        await tester.ensureVisible(selector);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: selector,
+            matching: find.byType(DropdownButton<String>),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(value).last);
+        await tester.pumpAndSettle();
+      }
+
+      await open();
+      await choose('session-widget-style', 'Отдельные плитки');
+      await choose('session-widget-position', 'Под кнопками оценок');
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Square && w.icon == 'close'),
+      );
+      await tester.pumpAndSettle();
+      expect(prefs.studyWidgetStyle, 'ribbon');
+      expect(prefs.studyWidgetPosition, 'aboveNavigation');
+      for (final style in [
+        ('ribbon', 'Единая капсула'),
+        ('tiles', 'Отдельные плитки'),
+      ]) {
+        for (final position in [
+          ('aboveNavigation', 'Над нижней навигацией'),
+          ('belowRatings', 'Под кнопками оценок'),
+          ('belowCard', 'Под карточкой'),
+        ]) {
+          await open();
+          await choose('session-widget-style', style.$2);
+          await choose('session-widget-position', position.$2);
+          if (style.$1 == 'ribbon' && position.$1 == 'aboveNavigation') {
+            await screenshot(tester, 'final-0.3.14-widget-settings');
+          }
+          await tester.tap(
+            find.byWidgetPredicate((w) => w is Square && w.icon == 'check'),
+          );
+          await tester.pumpAndSettle();
+          expect(prefs.studyWidgetStyle, style.$1);
+          expect(prefs.studyWidgetPosition, position.$1);
+          expect(tester.getRect(card).height, closeTo(280, .01));
+          final bar = tester.getRect(
+            find.byKey(const ValueKey('study-accessory')),
+          );
+          expect(
+            bar.bottom,
+            lessThan(tester.getTopLeft(find.byType(SessionNavigation)).dy),
+          );
+          for (final rating in ratingNames.skip(1)) {
+            final button = find.byWidgetPredicate(
+              (w) => w is Tap && w.label == rating,
+            );
+            expect(button.hitTestable(), findsOneWidget);
+            expect(tester.getRect(button).overlaps(bar), false);
+          }
+          expect(tester.takeException(), isNull);
+        }
+      }
+    },
+  );
+
+  testWidgets('session bottom navigation opens each home destination', (
+    tester,
+  ) async {
+    final (_, prefs) = await launch(tester, tab: 1);
+    for (final destination in [
+      (0, 'Профиль'),
+      (2, 'Словарь'),
+      (3, 'Импорт'),
+      (4, 'Настройки'),
+    ]) {
+      await tapNav(tester, 'Учить');
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeStudyPage), findsOneWidget);
+      await tapNav(tester, destination.$2);
+      expect(find.byType(NativeStudyPage), findsNothing);
+      expect(find.byType(NativeHome), findsOneWidget);
+      expect(prefs.values['tab'], destination.$1);
+      final visible = tester.widget<Offstage>(
+        find.byKey(ValueKey('home-tab-${destination.$1}')),
+      );
+      expect(visible.offstage, false);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        destination.$1,
+      );
+    }
+    await screenshot(tester, 'navigation-hotfix-settings');
+  });
+
+  testWidgets(
+    'rapid session navigation cannot pop home while time save is delayed',
+    (tester) async {
+      final store = _DelayedTimeStore();
+      final (_, prefs) = await launch(tester, tab: 1, suppliedStore: store);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      store.pendingTime = Completer<void>();
+      final select = tester
+          .widget<SessionNavigation>(find.byType(SessionNavigation))
+          .onSelect;
+      // Exercise callbacks already queued before the pop transition removes input.
+      for (final tab in [0, 2, 4]) {
+        select(tab);
+      }
+      await tester.pumpAndSettle();
+      // A network save must not trap the user on the session route.
+      expect(find.byType(NativeStudyPage), findsNothing);
+      expect(find.byType(NativeHome), findsOneWidget);
+      expect(prefs.values['tab'], 0);
+      store.pendingTime!.complete();
+      await tester.pumpAndSettle();
+      expect(store.savedTimes, hasLength(1));
+      expect(store.savedTimes.single, greaterThan(0));
+      expect(find.byType(NativeHome), findsOneWidget);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        0,
+      );
+      expect(tester.takeException(), isNull);
+      await screenshot(tester, 'navigation-hotfix-profile');
+    },
+  );
+
+  testWidgets(
+    'time-save failure after navigation does not throw from dispose',
+    (tester) async {
+      final store = _DelayedTimeStore();
+      await launch(tester, tab: 1, suppliedStore: store);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      store.pendingTime = Completer<void>();
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Профиль').last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeStudyPage), findsNothing);
+      store.pendingTime!.completeError(Exception('offline'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeHome), findsOneWidget);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        0,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'leaving during a flip and pending rating keeps the selected home tab',
+    (tester) async {
+      final store = _DelayedProgressStore();
+      await launch(tester, tab: 1, suppliedStore: store);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      final card = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'Перевернуть карточку',
+      );
+      await tester.tap(card);
+      await tester.pumpAndSettle();
+      store.pending = Completer<void>();
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == ratingNames[5]),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Словарь').last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeStudyPage), findsNothing);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        2,
+      );
+      store.pending!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeHome), findsOneWidget);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        2,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final phone in [
+    const Size(411.43, 914.29),
+    const Size(411.43, 891.43),
+    const Size(390, 844),
+  ]) {
+    testWidgets('rating grid fills the space above widgets at $phone', (
+      tester,
+    ) async {
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 32);
+      addTearDown(tester.view.resetPadding);
+      final (store, _) = await launch(tester, tab: 1, size: phone);
+      await store.patch({
+        'words/1/word': 'qualmen',
+        'words/1/info1': 'qualmt, qualmte, hat gequalmt',
+        'words/1/info2': '',
+        'words/1/ex1': 'Tag für Tag kriechen Myriaden qualmender Wagen über die Autobahn, und sie haben die gleiche Wirkung wie Wasser auf eine Gebetsmühle, mahlen einen endlosen Nebel aus hochgradig Bösem, der die metaphysische Atmosphäre im Umkreis von vielen Meilen verseucht.',
+        'words/1/ex2': '',
+      });
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      final card = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'Перевернуть карточку',
+      );
+      final last = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == ratingNames[6],
+      );
+      final first = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == ratingNames[1],
+      );
+      final bar = tester.getRect(find.byKey(const ValueKey('study-accessory')));
+      expect(tester.getRect(card).height, closeTo(280, .01));
+      expect(bar.top - tester.getRect(last).bottom, closeTo(12, .01));
+      expect(tester.getRect(first).height, greaterThanOrEqualTo(52));
+      for (final rating in ratingNames.skip(1)) {
+        final button = find.byWidgetPredicate(
+          (w) => w is Tap && w.label == rating,
+        );
+        expect(button.hitTestable(), findsOneWidget);
+        expect(tester.getRect(button).overlaps(bar), false);
+      }
+      expect(
+        find.ancestor(of: card, matching: find.byType(Scrollable)),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      await screenshot(tester, 'pixel-layout-${phone.height.toInt()}');
+    });
+  }
+
+  testWidgets(
+    'unified search suggests DWDS, adds a sense and marks owned cards',
+    (tester) async {
+      final client = MockClient(
+        (request) async => http.Response(
+          article,
+          200,
+          headers: {'content-type': 'text/html; charset=utf-8'},
+        ),
+      );
+      final dictionary = DwdsDictionary(client: client);
+      final (store, _) = await launch(tester, tab: 2, dictionary: dictionary);
+      final hit = (await tester.runAsync(() => dictionary.suggest('Haus')))!
+          .firstWhere((h) => h['lemma'] == 'Haus');
+      await tester.runAsync(() => dictionary.detail(hit));
+      await tester.enterText(find.byType(TextField).first, 'Haus');
+      await tester.pumpAndSettle();
+      expect(find.text('МОИ КАРТОЧКИ · 0'), findsOneWidget);
+      expect(find.text('СЛОВАРЬ DWDS'), findsOneWidget);
+      await screenshot(tester, 'unified-search-dwds');
+      final result = find.byWidgetPredicate(
+        (w) => w is Tap && w.label == 'DWDS: Haus',
+      );
+      await tester.ensureVisible(result);
+      await tester.tap(result);
+      await tester.pumpAndSettle();
+      expect(find.text('das Haus, die Häuser'), findsOneWidget);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Значение 2'),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('dwds-translation')),
+        'семья для теста',
+      );
+      await screenshot(tester, 'dwds-quick-add');
+      await tester.tap(find.widgetWithText(Pill, 'Добавить в мои карточки'));
+      await tester.pumpAndSettle();
+      final saved = store.words
+          .where((w) => w['translation'] == 'семья для теста')
+          .single;
+      expect(saved['dictionarySource'], 'DWDS');
+      expect(saved['dwdsDefinition'], 'Familie oder Haushalt');
+      expect(saved['ex1'], 'Das ganze Haus feiert.');
+      expect(saved['dictionaryUrl'], 'https://www.dwds.de/wb/Haus');
+      expect(find.text('DWDS · Уже есть в карточках'), findsWidgets);
+      await screenshot(tester, 'unified-search-owned');
+      await tester.ensureVisible(result);
+      await tester.tap(result);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('dwds-translation')),
+        'семья для теста',
+      );
+      await tester.tap(find.widgetWithText(Pill, 'Добавить в мои карточки'));
+      await tester.pumpAndSettle();
+      expect(
+        store.words.where((w) => w['translation'] == 'семья для теста'),
+        hasLength(1),
+      );
+      expect(find.text('Такая карточка уже есть в словаре'), findsOneWidget);
+      await tester.tap(find.byTooltip('Назад'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Очистить поиск'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, 'семья для теста');
+      await tester.pumpAndSettle();
+      expect(find.text('МОИ КАРТОЧКИ · 1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('unified-search-words')),
+          matching: find.text('семья для теста'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      client.close();
+    },
+  );
+
+  testWidgets(
+    'completion screen counts committed reviews, respects undo and exits to dictionary',
+    (tester) async {
+      final (_, prefs) = await launch(tester, tab: 1);
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is Tap && w.label == ratingNames[5]),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Выйти'));
+      await tester.pumpAndSettle();
+      for (final rating in [1, 4, 6]) {
+        await tester.tap(
+          find.byWidgetPredicate(
+            (w) => w is Tap && w.label == ratingNames[rating],
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Сессия завершена'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('summary-Карточек')),
+          matching: find.text('3'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('summary-Уверенно')),
+          matching: find.text('1'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Стоит закрепить'), findsOneWidget);
+      expect(find.text('der Augenblick'), findsOneWidget);
+      expect(prefs.values['session-words-all'], isNull);
+      await screenshot(tester, 'session-completed');
+      await tester.tap(find.widgetWithText(Pill, 'Открыть словарь'));
+      await tester.pumpAndSettle();
+      expect(find.byType(NativeStudyPage), findsNothing);
+      expect(
+        tester.widget<GlassNavigation>(find.byType(GlassNavigation)).selected,
+        2,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('exam completion reports actual checked results', (tester) async {
+    final (store, _) = await launch(tester, tab: 1);
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == 'Экзамен'),
+    );
+    await tester.pumpAndSettle();
+    final expected = wordTitle(store.words.firstWhere((w) => w['id'] == '3'));
+    await tester.enterText(find.byType(TextField), expected);
+    await tester.tap(find.widgetWithText(Pill, 'Проверить'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(Pill, 'Следующее слово'));
+    await tester.pumpAndSettle();
+    expect(find.text('Экзамен завершён'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('summary-Верно')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    await screenshot(tester, 'exam-completed');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('last card does not finish before its save succeeds', (
+    tester,
+  ) async {
+    final store = _DelayedProgressStore();
+    final (_, prefs) = await launch(tester, tab: 1, suppliedStore: store);
+    prefs.values['session-words-all'] = {
+      'ids': ['1'],
+      'index': 0,
+    };
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == 'Весь словарь'),
+    );
+    await tester.pumpAndSettle();
+    store.pending = Completer<void>();
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == ratingNames[5]),
+    );
+    await tester.pump();
+    expect(find.text('Сессия завершена'), findsNothing);
+    store.pending!.completeError(Exception('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('Сессия завершена'), findsNothing);
+    expect(find.text('der Augenblick').hitTestable(), findsOneWidget);
+    store.pending = null;
+    await tester.tap(
+      find.byWidgetPredicate((w) => w is Tap && w.label == ratingNames[5]),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Сессия завершена'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('summary-Карточек')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('card flip, six ratings, undo and native settings work', (
     tester,
   ) async {
@@ -890,7 +1500,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         final selector = find.byKey(const ValueKey('first-side-selector'));
-        await tester.ensureVisible(selector);
+        await tester.scrollUntilVisible(
+          selector,
+          180,
+          scrollable: find.byType(Scrollable).last,
+        );
         await tester.pumpAndSettle();
         await tester.tap(
           find.descendant(
@@ -996,7 +1610,11 @@ void main() {
             matching: find.byType(Row),
           )
           .first;
-      await tester.ensureVisible(row);
+      await tester.scrollUntilVisible(
+        find.text('Подсветка слова по роду'),
+        180,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(of: row, matching: find.byType(Tap)).last,

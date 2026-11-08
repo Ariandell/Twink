@@ -599,6 +599,9 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   late List<Json> _records;
   Json? result, incorrectState;
   final history = <Json>[];
+  final sessionResults = <String, Json>{};
+  bool _finished = false, _navigatingAway = false;
+  int sessionSeconds = 0;
   final answer = TextEditingController(), recognition = SpeechToText();
   final elapsed = ValueNotifier<int>(0);
   Timer? clock, restart;
@@ -613,12 +616,20 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     _motionIdle ??= Completer<void>();
   }
 
-  void _endCardMotion() {
+  void _endCardMotion({bool deferRelease = false}) {
     final release = _releaseVisualUpdates, idle = _motionIdle;
     _releaseVisualUpdates = null;
     _motionIdle = null;
-    release?.call();
-    idle?.complete();
+    void complete() {
+      release?.call();
+      idle?.complete();
+    }
+
+    if (deferRelease) {
+      scheduleMicrotask(complete);
+    } else {
+      complete();
+    }
   }
 
   Json get settings => {...originalSettings, ...widget.store.settings};
@@ -670,6 +681,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           !leaving &&
           DateTime.now().difference(activity).inSeconds < 30) {
         pending++;
+        sessionSeconds++;
         elapsed.value++;
       }
       if (pending >= 15) flush();
@@ -680,7 +692,10 @@ class _NativeStudyPageState extends State<NativeStudyPage>
         finish();
       } else {
         saveSession();
-        if (!widget.exam) speakVisibleSide();
+        if (!widget.exam) {
+          speakVisibleSide();
+          unawaited(_ensureFrequency());
+        }
       }
     });
   }
@@ -689,7 +704,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.store.removeListener(syncCurrent);
-    _endCardMotion();
+    _endCardMotion(deferRelease: true);
     clock?.cancel();
     restart?.cancel();
     audio.speech.stop();
@@ -729,7 +744,11 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       missing = fresh == null;
       if (fresh != null) queue[index] = Map<String, dynamic>.from(fresh);
     });
-    if (missing) audio.speech.stop();
+    if (missing) {
+      audio.speech.stop();
+    } else if (!widget.exam) {
+      unawaited(_ensureFrequency());
+    }
   }
 
   Future<void> restoreWord() async {
@@ -768,10 +787,18 @@ class _NativeStudyPageState extends State<NativeStudyPage>
   }
 
   Future<void> flush() async {
-    if (flushing != null) return flushing!;
+    if (flushing != null) {
+      try {
+        await flushing;
+      } catch (_) {}
+      return;
+    }
     if (pending == 0) return;
     final n = pending;
-    final work = widget.store.addTime(n);
+    final store = widget.store;
+    // dispose may run with the widget tree locked. Persist outside that phase,
+    // including the synchronous demo/cache notifications before the HTTP call.
+    final work = Future<void>.microtask(() => store.addTime(n));
     flushing = work;
     try {
       await work;
@@ -782,27 +809,44 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     }
   }
 
+  void leaveForTab(int tab) {
+    if (!mounted || _navigatingAway || (leaving && !_finished)) return;
+    _navigatingAway = true;
+    leaving = true;
+    clock?.cancel();
+    restart?.cancel();
+    if (!_finished) saveSession();
+    widget.prefs.set('tab', tab, notify: false);
+    _endCardMotion();
+    unawaited(() async {
+      try {
+        await audio.speech.stop();
+      } catch (_) {}
+      try {
+        await recognition.stop();
+      } catch (_) {}
+    }());
+    unawaited(flush());
+    Navigator.of(context).pop();
+  }
+
   Future<void> finish() async {
     if (leaving || !mounted) return;
     leaving = true;
-    audio.speech.stop();
-    recognition.stop();
-    await flush();
-    if (!mounted) return;
+    clock?.cancel();
+    restart?.cancel();
+    _endCardMotion();
+    unawaited(() async {
+      try {
+        await audio.speech.stop();
+      } catch (_) {}
+      try {
+        await recognition.stop();
+      } catch (_) {}
+    }());
+    unawaited(flush());
     widget.prefs.set(sessionKey, null, notify: false);
-    await showDialog<void>(
-      context: context,
-      builder: (c) => AlertDialog(
-        content: Text(widget.exam ? 'Экзамен завершен!' : 'Сессия завершена!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+    setState(() => _finished = true);
   }
 
   Future<void> exit() async {
@@ -817,12 +861,14 @@ class _NativeStudyPageState extends State<NativeStudyPage>
           last['progress'] as Json?,
         );
         history.removeLast();
+        sessionResults.remove('${last['id']}');
         index = last['index'] as int;
         queue[index]['progress_global'] = last['progress'];
         back = firstBack;
         saveSession();
         if (mounted) setState(() => busy = false);
         speakVisibleSide();
+        unawaited(_ensureFrequency());
       } catch (e) {
         if (mounted) {
           setState(() => busy = false);
@@ -930,15 +976,25 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     });
     if (hasNext) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && index == ratedIndex + 1 && !leaving) _speakAfterMotion();
+        if (mounted && index == ratedIndex + 1 && !leaving) {
+          _speakAfterMotion();
+          unawaited(_ensureFrequency());
+        }
       });
     }
     try {
       await widget.store.progress(widget.kind, id, next);
       await _motionIdle?.future;
       if (!mounted) return;
-      history.add({'id': id, 'index': ratedIndex, 'progress': previous});
+      history.add({
+        'id': id,
+        'index': ratedIndex,
+        'progress': previous,
+        'title': wordTitle(rated),
+        'rating': rating,
+      });
       if (history.length > 10) history.removeAt(0);
+      sessionResults[id] = {...rated, 'rating': rating};
       _records = widget.kind == 'words'
           ? widget.store.words
           : widget.store.idioms;
@@ -962,6 +1018,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
             : widget.store.idioms;
       });
       unawaited(audio.speech.stop().catchError((_) {}));
+      unawaited(_ensureFrequency());
       notify(context, 'Не удалось сохранить оценку. Повторите попытку.');
     }
   }
@@ -1133,6 +1190,11 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       setState(() {
         word['progress_global'] = progress;
         result = checked;
+        sessionResults['${word['id']}'] = {
+          ...word,
+          'correct': checked['correct'],
+          'rating': progress['lastRating'],
+        };
         incorrectState = null;
         busy = false;
       });
@@ -1173,6 +1235,11 @@ class _NativeStudyPageState extends State<NativeStudyPage>
             result = checkAnswer(word, answer.text);
           }
           word['progress_global'] = next;
+          sessionResults['${word['id']}'] = {
+            ...word,
+            'correct': result?['correct'] == true,
+            'rating': next['lastRating'],
+          };
           busy = false;
         });
       }
@@ -1201,6 +1268,18 @@ class _NativeStudyPageState extends State<NativeStudyPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_finished) {
+      return _SessionSummary(
+        exam: widget.exam,
+        title:
+            widget.folder ??
+            (widget.kind == 'words' ? 'Все слова' : 'Все идиомы'),
+        results: sessionResults.values.toList(),
+        seconds: sessionSeconds,
+        onStudy: () => leaveForTab(1),
+        onDictionary: () => leaveForTab(2),
+      );
+    }
     if (queue.isEmpty || index >= queue.length) {
       return const Scaffold(
         backgroundColor: Colors.transparent,
@@ -1297,196 +1376,261 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     }).length;
     return LayoutBuilder(
       builder: (context, viewport) {
-        final compact = viewport.maxHeight < 740 || viewport.maxWidth <= 360;
+        final compact = viewport.maxHeight < 760 || viewport.maxWidth <= 360;
+        final roomy = !compact && viewport.maxHeight >= 844;
+        final showAccessory = viewport.maxHeight >= 610;
+        final underCard =
+            widget.prefs.studyWidgetPosition == 'belowCard' && showAccessory;
+        final docked =
+            widget.prefs.studyWidgetPosition == 'aboveNavigation' &&
+            showAccessory;
+        final topPadding = compact
+            ? 8.0
+            : roomy
+            ? 12.0
+            : 8.0;
+        final bottomPadding = docked
+            ? (widget.prefs.studyWidgetStyle == 'tiles' ? 180.0 : 168.0)
+            : showAccessory
+            ? 80.0
+            : 72.0;
         final columns = compact ? 3 : 2;
+        final rows = (6 / columns).ceil();
         final spacing = compact ? 8.0 : 12.0;
         return Stack(
           children: [
             Positioned.fill(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(12, compact ? 8 : 12, 12, 72),
+                padding: EdgeInsets.fromLTRB(12, topPadding, 12, bottomPadding),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.topCenter,
                   child: SizedBox(
                     width: viewport.maxWidth - 24,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                    child: _SessionColumn(
+                      viewportHeight:
+                          viewport.maxHeight - topPadding - bottomPadding,
+                      minimumRatingsHeight:
+                          (compact
+                                  ? 42.0
+                                  : roomy
+                                  ? 60.0
+                                  : 48.0) *
+                              rows +
+                          spacing * (rows - 1),
                       children: [
-                        Row(
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Square(
-                              'back',
-                              onTap: exit,
-                              tooltip: 'Выйти',
-                              size: compact ? 32 : 40,
-                            ),
-                            const SizedBox(width: 8),
-                            Square(
-                              settings['audio'] == true ? 'volume' : 'muted',
-                              active: settings['audio'] == true,
-                              size: compact ? 32 : 40,
-                              onTap: () async {
-                                await widget.store.patch({
-                                  'settings/study': {
-                                    ...settings,
-                                    'audio': settings['audio'] != true,
+                            Row(
+                              children: [
+                                Square(
+                                  'back',
+                                  onTap: exit,
+                                  tooltip: 'Выйти',
+                                  size: compact ? 32 : 40,
+                                ),
+                                const SizedBox(width: 8),
+                                Square(
+                                  settings['audio'] == true
+                                      ? 'volume'
+                                      : 'muted',
+                                  active: settings['audio'] == true,
+                                  size: compact ? 32 : 40,
+                                  onTap: () async {
+                                    await widget.store.patch({
+                                      'settings/study': {
+                                        ...settings,
+                                        'audio': settings['audio'] != true,
+                                      },
+                                    });
+                                    if (mounted) setState(() {});
+                                    if (settings['audio'] != true) {
+                                      audio.speech.stop();
+                                    }
                                   },
-                                });
-                                if (mounted) setState(() {});
-                                if (settings['audio'] != true) {
-                                  audio.speech.stop();
-                                }
-                              },
-                              tooltip: 'Озвучка',
-                            ),
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
+                                  tooltip: 'Озвучка',
                                 ),
-                                child: label(
-                                  widget.folder ??
-                                      (widget.kind == 'words'
-                                          ? 'Все слова'
-                                          : 'Все идиомы'),
-                                  size: 16,
-                                  weight: FontWeight.w700,
-                                  align: TextAlign.center,
-                                  lines: 1,
-                                ),
-                              ),
-                            ),
-                            const Glyph('star', size: 15),
-                            const SizedBox(width: 5),
-                            label('$ideal', size: 12, weight: FontWeight.w700),
-                            const SizedBox(width: 10),
-                            ValueListenableBuilder<int>(
-                              valueListenable: elapsed,
-                              builder: (context, n, _) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: fg.withValues(alpha: .1),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                child: label(
-                                  formatSeconds(n),
-                                  size: 11,
-                                  weight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Square(
-                              'settings',
-                              onTap: openSettings,
-                              tooltip: 'Настройки',
-                              size: compact ? 32 : 40,
-                            ),
-                          ],
-                        ),
-                        gap(compact ? 4 : 18),
-                        Row(
-                          spacing: 12,
-                          children: [
-                            for (final v in <(String, String, bool)>[
-                              (
-                                '${scope.length}',
-                                'Всего слов',
-                                settings['showStatTotal'] == true,
-                              ),
-                              (
-                                '$due',
-                                'К повторению',
-                                settings['showStatDue'] == true,
-                              ),
-                              (
-                                '$learned',
-                                'Пройдено сегодня',
-                                settings['showStatToday'] == true,
-                              ),
-                            ])
-                              if (v.$3)
                                 Expanded(
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(
-                                      minHeight: compact ? 44 : 76,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
                                     ),
-                                    child: Surface(
-                                      radius: 12,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: compact ? 4 : 8,
-                                        vertical: compact ? 4 : 9,
-                                      ),
-                                      strong: true,
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          label(
-                                            v.$1,
-                                            size: 18,
-                                            weight: FontWeight.w700,
-                                          ),
-                                          gap(compact ? 2 : 4),
-                                          ConstrainedBox(
-                                            constraints: const BoxConstraints(
-                                              maxWidth: 90,
-                                            ),
-                                            child: label(
-                                              compact
-                                                  ? (v.$2 == 'Всего слов'
-                                                        ? 'Всего'
-                                                        : v.$2 == 'К повторению'
-                                                        ? 'Повторить'
-                                                        : 'Сегодня')
-                                                  : v.$2,
-                                              size: 11.2,
-                                              color: muted(context),
-                                              align: TextAlign.center,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                    child: label(
+                                      widget.folder ??
+                                          (widget.kind == 'words'
+                                              ? 'Все слова'
+                                              : 'Все идиомы'),
+                                      size: 16,
+                                      weight: FontWeight.w700,
+                                      align: TextAlign.center,
+                                      lines: 1,
                                     ),
                                   ),
                                 ),
+                                const Glyph('star', size: 15),
+                                const SizedBox(width: 5),
+                                label(
+                                  '$ideal',
+                                  size: 12,
+                                  weight: FontWeight.w700,
+                                ),
+                                const SizedBox(width: 10),
+                                ValueListenableBuilder<int>(
+                                  valueListenable: elapsed,
+                                  builder: (context, n, _) => Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: fg.withValues(alpha: .1),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: label(
+                                      formatSeconds(n),
+                                      size: 11,
+                                      weight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Square(
+                                  'settings',
+                                  onTap: openSettings,
+                                  tooltip: 'Настройки',
+                                  size: compact ? 32 : 40,
+                                ),
+                              ],
+                            ),
+                            gap(
+                              compact
+                                  ? 4
+                                  : roomy
+                                  ? 16
+                                  : 12,
+                            ),
+                            Row(
+                              spacing: 12,
+                              children: [
+                                for (final v in <(String, String, bool)>[
+                                  (
+                                    '${scope.length}',
+                                    'Всего слов',
+                                    settings['showStatTotal'] == true,
+                                  ),
+                                  (
+                                    '$due',
+                                    'К повторению',
+                                    settings['showStatDue'] == true,
+                                  ),
+                                  (
+                                    '$learned',
+                                    'Пройдено сегодня',
+                                    settings['showStatToday'] == true,
+                                  ),
+                                ])
+                                  if (v.$3)
+                                    Expanded(
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(
+                                          minHeight: compact
+                                              ? 44
+                                              : roomy
+                                              ? 76
+                                              : 64,
+                                        ),
+                                        child: Surface(
+                                          radius: 12,
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: compact ? 4 : 8,
+                                            vertical: compact ? 4 : 9,
+                                          ),
+                                          strong: true,
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              label(
+                                                v.$1,
+                                                size: 18,
+                                                weight: FontWeight.w700,
+                                              ),
+                                              gap(compact ? 2 : 4),
+                                              ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      maxWidth: 90,
+                                                    ),
+                                                child: label(
+                                                  compact
+                                                      ? (v.$2 == 'Всего слов'
+                                                            ? 'Всего'
+                                                            : v.$2 ==
+                                                                  'К повторению'
+                                                            ? 'Повторить'
+                                                            : 'Сегодня')
+                                                      : v.$2,
+                                                  size: 11.2,
+                                                  color: muted(context),
+                                                  align: TextAlign.center,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ),
+                            gap(
+                              compact
+                                  ? 4
+                                  : roomy
+                                  ? 16
+                                  : 12,
+                            ),
+                            StickerDeck(
+                              contentId: '${word['id']}',
+                              images: _pictures,
+                              height: _cardHeight,
+                              onMotionStart: () {
+                                _peeling = true;
+                                _beginCardMotion();
+                              },
+                              onMotionEnd: () {
+                                _peeling = false;
+                                _endCardMotion();
+                              },
+                              child: _NativeFlashcard(
+                                key: const ValueKey('study-flashcard'),
+                                contentId: '${word['id']}',
+                                height: _cardHeight,
+                                onSettled: _endCardMotion,
+                                back: back,
+                                onFlip: flip,
+                                front: KeyedSubtree(
+                                  key: ValueKey('front-${word['id']}'),
+                                  child: _front(),
+                                ),
+                                reverse: KeyedSubtree(
+                                  key: ValueKey('back-${word['id']}'),
+                                  child: _back(),
+                                ),
+                              ),
+                            ),
+                            gap(
+                              compact
+                                  ? 8
+                                  : !docked && showAccessory
+                                  ? 12
+                                  : roomy
+                                  ? 20
+                                  : 16,
+                            ),
+                            if (underCard) ...[_sessionAccessory(), gap(12)],
                           ],
                         ),
-                        gap(compact ? 4 : 18),
-                        StickerDeck(
-                          contentId: '${word['id']}',
-                          images: _pictures,
-                          height: _cardHeight,
-                          onMotionStart: () {
-                            _peeling = true;
-                            _beginCardMotion();
-                          },
-                          onMotionEnd: () {
-                            _peeling = false;
-                            _endCardMotion();
-                          },
-                          child: _NativeFlashcard(
-                            key: const ValueKey('study-flashcard'),
-                            contentId: '${word['id']}',
-                            height: _cardHeight,
-                            onSettled: _endCardMotion,
-                            back: back,
-                            onFlip: flip,
-                            front: KeyedSubtree(
-                              key: ValueKey('front-${word['id']}'),
-                              child: _front(),
-                            ),
-                            reverse: KeyedSubtree(
-                              key: ValueKey('back-${word['id']}'),
-                              child: _back(),
-                            ),
-                          ),
-                        ),
-                        gap(compact ? 8 : 24),
                         LayoutBuilder(
                           builder: (context, c) => Wrap(
                             spacing: spacing,
@@ -1501,7 +1645,9 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                                     label: ratingNames[r],
                                     onTap: busy ? null : () => rate(r),
                                     child: Container(
-                                      height: compact ? 40 : 56,
+                                      height:
+                                          (c.maxHeight - spacing * (rows - 1)) /
+                                          rows,
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(
@@ -1517,8 +1663,8 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                                               children: [
                                                 label(
                                                   ratingNames[r],
-                                                  size: 14,
-                                                  weight: FontWeight.w700,
+                                                  size: compact ? 14 : 15.2,
+                                                  weight: FontWeight.w600,
                                                 ),
                                                 gap(2),
                                                 label(
@@ -1546,29 +1692,40 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                             ],
                           ),
                         ),
-                        if (busy && !savingRating)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 10),
-                            child: LinearProgressIndicator(minHeight: 2),
-                          ),
-                        if (settings['showProgress'] == true) ...[
-                          gap(compact ? 4 : 12),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(5),
-                            child: LinearProgressIndicator(
-                              value: queue.isEmpty ? 0 : index / queue.length,
-                              minHeight: 5,
-                              color: fg,
-                              backgroundColor: fg.withValues(alpha: .12),
-                            ),
-                          ),
-                        ],
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (busy && !savingRating)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 10),
+                                child: LinearProgressIndicator(minHeight: 2),
+                              ),
+                            if (showAccessory &&
+                                widget.prefs.studyWidgetPosition ==
+                                    'belowRatings') ...[
+                              gap(16),
+                              _sessionAccessory(),
+                            ],
+                            if (!showAccessory &&
+                                settings['showProgress'] == true) ...[
+                              gap(8),
+                              _sessionAccessory(minimal: true),
+                            ],
+                          ],
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
+            if (docked)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 80,
+                child: _sessionAccessory(),
+              ),
             Positioned(
               left: 0,
               right: 0,
@@ -1576,10 +1733,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
               child: SessionNavigation(
                 store: widget.store,
                 prefs: widget.prefs,
-                onExit: () async {
-                  await flush();
-                  if (context.mounted) Navigator.pop(context);
-                },
+                onSelect: leaveForTab,
                 listening: listening,
               ),
             ),
@@ -1588,6 +1742,56 @@ class _NativeStudyPageState extends State<NativeStudyPage>
       },
     );
   }
+
+  Json? _frequency;
+  String? _frequencyWord;
+  Future<void> _ensureFrequency() async {
+    final query = DwdsFrequencyRepository.query(wordTitle(word));
+    if (_frequencyWord == query) return;
+    _frequencyWord = query;
+    _frequency = null;
+    final record = await DwdsFrequencyRepository.load(
+      query,
+      cache: asMap(widget.prefs.values['dwdsFrequency']),
+      allowNetwork: !widget.store.demo,
+    );
+    if (!mounted || _frequencyWord != query) return;
+    await _motionIdle?.future;
+    if (!mounted || _frequencyWord != query) return;
+    if (record != null) {
+      widget.prefs.set('dwdsFrequency', {
+        ...asMap(widget.prefs.values['dwdsFrequency']),
+        query: record,
+      }, notify: false);
+    }
+    setState(() => _frequency = record);
+  }
+
+  Widget _sessionAccessory({bool minimal = false}) => _StudyAccessoryBar(
+    mode: widget.prefs.studyWidgetStyle,
+    frequency: _frequencyWord == DwdsFrequencyRepository.query(wordTitle(word))
+        ? _frequency
+        : null,
+    progress: asMap(word['progress_global']),
+    total: queue.length,
+    remaining: queue.length - index,
+    minimal: minimal,
+    showProgress: settings['showProgress'] == true,
+    onMode: (mode) {
+      widget.prefs.set('studyMetricsLayout', mode, notify: false);
+      widget.prefs.set(
+        'studyWidgetStyle',
+        mode == 'tiles' ? 'tiles' : 'ribbon',
+        notify: false,
+      );
+      widget.prefs.set(
+        'studyWidgetPosition',
+        mode == 'underCard' ? 'belowCard' : 'aboveNavigation',
+        notify: false,
+      );
+      setState(() {});
+    },
+  );
 
   Color prefsSchemeColor(int r) {
     if (widget.prefs.scheme == 'pure-black') {
@@ -1661,24 +1865,27 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (settings['showWord'] == true)
-                    Text.rich(
-                      TextSpan(
-                        style: textStyle,
-                        children:
-                            settings['genderColors'] == true && gender != null
-                            ? [
-                                TextSpan(
-                                  text: comma < 0
-                                      ? title
-                                      : title.substring(0, comma),
-                                  style: TextStyle(color: gender),
-                                ),
-                                if (comma >= 0)
-                                  TextSpan(text: title.substring(comma)),
-                              ]
-                            : [TextSpan(text: title)],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text.rich(
+                        TextSpan(
+                          style: textStyle,
+                          children:
+                              settings['genderColors'] == true && gender != null
+                              ? [
+                                  TextSpan(
+                                    text: comma < 0
+                                        ? title
+                                        : title.substring(0, comma),
+                                    style: TextStyle(color: gender),
+                                  ),
+                                  if (comma >= 0)
+                                    TextSpan(text: title.substring(comma)),
+                                ]
+                              : [TextSpan(text: title)],
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
                     ),
                   if (!idiom &&
                       settings['showInfo1'] == true &&
@@ -1708,9 +1915,11 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                   ],
                   if (examples.isNotEmpty) ...[
                     gap(20),
-                    for (final ex in examples)
+                    for (var i = 0; i < examples.length; i++)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
+                        padding: EdgeInsets.only(
+                          bottom: i == examples.length - 1 ? 0 : 8,
+                        ),
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
@@ -1722,7 +1931,7 @@ class _NativeStudyPageState extends State<NativeStudyPage>
                             ),
                           ),
                           child: _HighlightedExample(
-                            ex,
+                            examples[i],
                             title: wordTitle(word),
                             forms: info1,
                           ),
@@ -1754,9 +1963,9 @@ class _NativeStudyPageState extends State<NativeStudyPage>
     strong: true,
     background: _cardPaper,
     tint: settings['genderCardBackground'] == true ? gender : null,
-    padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
+    padding: const EdgeInsets.all(32),
     child: ConstrainedBox(
-      constraints: BoxConstraints.tightFor(height: _cardHeight - 74),
+      constraints: BoxConstraints.tightFor(height: _cardHeight - 64),
       child: _ReadableCardContent(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2177,17 +2386,102 @@ class _HighlightedExample extends StatelessWidget {
   }
 }
 
+/// Measure header/card and footer first; give the rating grid the remaining
+/// viewport height. FittedBox remains the fallback only below the natural minimum.
+class _SessionColumn extends MultiChildRenderObjectWidget {
+  const _SessionColumn({
+    required this.viewportHeight,
+    required this.minimumRatingsHeight,
+    required super.children,
+  });
+  final double viewportHeight, minimumRatingsHeight;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSessionColumn(viewportHeight, minimumRatingsHeight);
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderSessionColumn renderObject,
+  ) => renderObject.update(viewportHeight, minimumRatingsHeight);
+}
+
+class _SessionParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderSessionColumn extends RenderBox
+    with
+        ContainerRenderObjectMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        >,
+        RenderBoxContainerDefaultsMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        > {
+  _RenderSessionColumn(this.viewportHeight, this.minimumRatingsHeight);
+  double viewportHeight, minimumRatingsHeight;
+  void update(double height, double minimum) {
+    if (height == viewportHeight && minimum == minimumRatingsHeight) return;
+    viewportHeight = height;
+    minimumRatingsHeight = minimum;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! ContainerBoxParentData<RenderBox>) {
+      child.parentData = _SessionParentData();
+    }
+  }
+
+  @override
+  void performLayout() {
+    final before = firstChild!,
+        ratings = childAfter(before)!,
+        after = lastChild!;
+    final width = constraints.maxWidth;
+    final natural = BoxConstraints.tightFor(width: width);
+    before.layout(natural, parentUsesSize: true);
+    after.layout(natural, parentUsesSize: true);
+    ratings.layout(
+      BoxConstraints.tightFor(
+        width: width,
+        height: math.max(
+          minimumRatingsHeight,
+          viewportHeight - before.size.height - after.size.height,
+        ),
+      ),
+      parentUsesSize: true,
+    );
+    var y = 0.0;
+    for (final child in [before, ratings, after]) {
+      (child.parentData! as ContainerBoxParentData<RenderBox>).offset = Offset(
+        0,
+        y,
+      );
+      y += child.size.height;
+    }
+    size = constraints.constrain(Size(width, y));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
 class SessionNavigation extends StatelessWidget {
   const SessionNavigation({
     super.key,
     required this.store,
     required this.prefs,
-    required this.onExit,
+    required this.onSelect,
     required this.listening,
   });
   final TwinkStore store;
   final NativePreferences prefs;
-  final Future<void> Function() onExit;
+  final ValueChanged<int> onSelect;
   final bool listening;
   @override
   Widget build(BuildContext context) => Padding(
@@ -2196,8 +2490,7 @@ class SessionNavigation extends StatelessWidget {
       selected: 1,
       onSelect: (i) {
         if (i == 1) return;
-        prefs.set('tab', i);
-        onExit();
+        onSelect(i);
       },
     ),
   );

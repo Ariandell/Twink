@@ -311,6 +311,41 @@ extension _SettingsView on _NativeHomeState {
         },
       ),
       gap(32),
+      label('Статистический блок', size: 20, weight: FontWeight.w700),
+      gap(12),
+      DropdownButtonFormField<String>(
+        key: ValueKey('widget-style-${prefs.studyWidgetStyle}'),
+        initialValue: prefs.studyWidgetStyle,
+        decoration: const InputDecoration(labelText: 'Оформление виджетов'),
+        items: const [
+          DropdownMenuItem(value: 'ribbon', child: Text('Единая капсула')),
+          DropdownMenuItem(value: 'tiles', child: Text('Отдельные плитки')),
+        ],
+        onChanged: (value) {
+          if (value != null) prefs.set('studyWidgetStyle', value);
+        },
+      ),
+      gap(16),
+      DropdownButtonFormField<String>(
+        key: ValueKey('widget-position-${prefs.studyWidgetPosition}'),
+        initialValue: prefs.studyWidgetPosition,
+        decoration: const InputDecoration(labelText: 'Положение виджетов'),
+        items: const [
+          DropdownMenuItem(
+            value: 'aboveNavigation',
+            child: Text('Над нижней навигацией'),
+          ),
+          DropdownMenuItem(
+            value: 'belowRatings',
+            child: Text('Под кнопками оценок'),
+          ),
+          DropdownMenuItem(value: 'belowCard', child: Text('Под карточкой')),
+        ],
+        onChanged: (value) {
+          if (value != null) prefs.set('studyWidgetPosition', value);
+        },
+      ),
+      gap(32),
       label('Цветовая схема', size: 20, weight: FontWeight.w700),
       gap(8),
       label(
@@ -564,6 +599,8 @@ class _SessionSettings extends StatefulWidget {
 
 class _SessionSettingsState extends State<_SessionSettings> {
   late String draftFont = widget.prefs.fontFamily;
+  late String draftWidgetStyle = widget.prefs.studyWidgetStyle;
+  late String draftWidgetPosition = widget.prefs.studyWidgetPosition;
   late Json draft = {...originalSettings, ...widget.store.settings};
   late bool voice = widget.voiceOn;
   bool saving = false;
@@ -605,6 +642,12 @@ class _SessionSettingsState extends State<_SessionSettings> {
       if (draftFont != widget.prefs.fontFamily) {
         widget.prefs.set('fontFamily', draftFont);
       }
+      widget.prefs.set('studyWidgetStyle', draftWidgetStyle, notify: false);
+      widget.prefs.set(
+        'studyWidgetPosition',
+        draftWidgetPosition,
+        notify: false,
+      );
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
@@ -897,6 +940,33 @@ class _SessionSettingsState extends State<_SessionSettings> {
                     ]),
                   ),
                   section('ОФОРМЛЕНИЕ'),
+                  label(
+                    'Статистический блок',
+                    size: 16,
+                    weight: FontWeight.w700,
+                  ),
+                  gap(12),
+                  label('Оформление виджетов', size: 14),
+                  gap(6),
+                  KeyedSubtree(
+                    key: const ValueKey('session-widget-style'),
+                    child: _select(draftWidgetStyle, const {
+                      'ribbon': 'Единая капсула',
+                      'tiles': 'Отдельные плитки',
+                    }, (value) => setState(() => draftWidgetStyle = value)),
+                  ),
+                  gap(12),
+                  label('Положение виджетов', size: 14),
+                  gap(6),
+                  KeyedSubtree(
+                    key: const ValueKey('session-widget-position'),
+                    child: _select(draftWidgetPosition, const {
+                      'aboveNavigation': 'Над нижней навигацией',
+                      'belowRatings': 'Под кнопками оценок',
+                      'belowCard': 'Под карточкой',
+                    }, (value) => setState(() => draftWidgetPosition = value)),
+                  ),
+                  gap(20),
                   label('Шрифт', size: 14, weight: FontWeight.w500),
                   gap(6),
                   KeyedSubtree(

@@ -73,6 +73,19 @@ Json review(Json previous, int rating, {String mode = 'long', int? now}) {
     ...previous,
     'interval': interval,
     'nextDate': time + (interval * dayMs).round(),
+    'recentRatings': [
+      ...(previous['recentRatings'] is List
+              ? (previous['recentRatings'] as List)
+                    .whereType<num>()
+                    .where((r) => r >= 1 && r <= 6)
+                    .toList()
+              : <num>[])
+          .reversed
+          .take(7)
+          .toList()
+          .reversed,
+      rating,
+    ],
     'lastRating': rating,
     'lastReviewed': time,
     'excellentStreak': score,
@@ -111,6 +124,19 @@ Json examProgress(
     'is_ideal': correct,
     'interval': interval,
     'nextDate': time + (interval * dayMs).round(),
+    'recentRatings': [
+      ...(previous['recentRatings'] is List
+              ? (previous['recentRatings'] as List)
+                    .whereType<num>()
+                    .where((r) => r >= 1 && r <= 6)
+                    .toList()
+              : <num>[])
+          .reversed
+          .take(7)
+          .toList()
+          .reversed,
+      rating,
+    ],
     'lastRating': rating,
     'lastReviewed': time,
   };

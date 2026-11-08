@@ -6,6 +6,10 @@ const folder = path.join(root, 'assets/word-images');
 fs.mkdirSync(path.join(folder, 'images'), { recursive: true });
 const source = path.join(root, 'assets/lexicon/index.json');
 const lookup = path.join(folder, 'lookup.json');
+const fields = ['word', 'translation', 'info1', 'info2', 'ex1', 'ex2'];
+const entries = fs.existsSync(source) ? JSON.parse(fs.readFileSync(source, 'utf8')).entries ?? [] : [];
+fs.writeFileSync(path.join(folder, 'lexicon.json'), JSON.stringify(entries.map(word =>
+  Object.fromEntries(fields.map(key => [key, word[key] ?? ''])))));
 if (fs.existsSync(source)) {
   const result = {};
   for (const word of JSON.parse(fs.readFileSync(source, 'utf8')).entries ?? []) {

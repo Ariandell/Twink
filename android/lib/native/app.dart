@@ -15,6 +15,11 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../domain.dart';
+import '../word_metrics.dart';
+import '../dwds_dictionary.dart';
+
+import 'package:url_launcher/url_launcher.dart';
+
 import '../repository.dart';
 import '../speech.dart' as audio;
 import '../audio_api.dart' show speechPlan;
@@ -22,7 +27,10 @@ import '../spreadsheet.dart';
 
 part 'profile.dart';
 part 'dictionary.dart';
+part 'dictionary_search.dart';
+part 'session_summary.dart';
 part 'study.dart';
+part 'study_accessory.dart';
 part 'settings.dart';
 part 'trail.dart';
 part 'exam_help.dart';
@@ -88,6 +96,21 @@ class NativePreferences extends ChangeNotifier {
   String get fontFamily =>
       values['fontFamily'] == 'Roboto' ? 'Roboto' : 'Outfit';
   bool get light => values['theme'] == 'light';
+  String get studyWidgetStyle =>
+      values['studyWidgetStyle'] == 'tiles' ||
+          (values['studyWidgetStyle'] == null &&
+              values['studyMetricsLayout'] == 'tiles')
+      ? 'tiles'
+      : 'ribbon';
+  String get studyWidgetPosition {
+    final position = values['studyWidgetPosition'];
+    return ['aboveNavigation', 'belowCard', 'belowRatings'].contains(position)
+        ? '$position'
+        : values['studyMetricsLayout'] == 'underCard'
+        ? 'belowCard'
+        : 'aboveNavigation';
+  }
+
   String get scheme => '${values['scheme'] ?? 'pure-black'}';
   Future<void> load() async {
     if (!persistent) return;
@@ -127,7 +150,13 @@ class NativePreferences extends ChangeNotifier {
 }
 
 class NativeTwinkApp extends StatefulWidget {
-  const NativeTwinkApp({super.key, this.store, this.preferences});
+  const NativeTwinkApp({
+    super.key,
+    this.store,
+    this.preferences,
+    this.dictionary,
+  });
+  final DwdsDictionary? dictionary;
   final TwinkStore? store;
   final NativePreferences? preferences;
   @override
@@ -252,7 +281,11 @@ class _NativeTwinkAppState extends State<NativeTwinkApp> {
                   ),
                 )
               : store.signedIn
-              ? NativeHome(store: store, prefs: prefs)
+              ? NativeHome(
+                  store: store,
+                  prefs: prefs,
+                  dictionary: widget.dictionary,
+                )
               : _AuthPage(store: store),
         ),
       );
@@ -388,6 +421,7 @@ class Square extends StatelessWidget {
     this.active = false,
     this.border = true,
     this.size = 40,
+    this.iconSize = 20,
     this.color,
   });
   final String icon;
@@ -395,6 +429,7 @@ class Square extends StatelessWidget {
   final String? tooltip;
   final bool active, border;
   final double size;
+  final double iconSize;
   final Color? color;
   @override
   Widget build(BuildContext context) => Tooltip(
@@ -417,7 +452,7 @@ class Square extends StatelessWidget {
         ),
         child: Glyph(
           icon,
-          size: 20,
+          size: iconSize,
           color: color ?? (active ? ink(context) : muted(context)),
         ),
       ),
@@ -544,7 +579,13 @@ Future<String?> nativePrompt(
 }
 
 class NativeHome extends StatefulWidget {
-  const NativeHome({super.key, required this.store, required this.prefs});
+  const NativeHome({
+    super.key,
+    required this.store,
+    required this.prefs,
+    this.dictionary,
+  });
+  final DwdsDictionary? dictionary;
   final TwinkStore store;
   final NativePreferences prefs;
   @override

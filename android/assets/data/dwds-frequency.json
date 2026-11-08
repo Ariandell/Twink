@@ -1,0 +1,57 @@
+{
+  "erinnern": {
+    "data": {
+      "total": "53410843153",
+      "frequency": 4,
+      "q": "erinnern",
+      "hits": 6521042,
+      "lemma": "erinnern"
+    },
+    "source": "https://www.dwds.de/api/frequency/?q=erinnern",
+    "fetchedAt": 1794089004550
+  },
+  "Möglichkeit": {
+    "data": {
+      "total": "53410843153",
+      "q": "Möglichkeit",
+      "frequency": 4,
+      "lemma": "Möglichkeit",
+      "hits": 13139703
+    },
+    "source": "https://www.dwds.de/api/frequency/?q=M%C3%B6glichkeit",
+    "fetchedAt": 1794089005017
+  },
+  "Entscheidung": {
+    "data": {
+      "lemma": "Entscheidung",
+      "hits": 8850858,
+      "total": "53410843153",
+      "frequency": 4,
+      "q": "Entscheidung"
+    },
+    "source": "https://www.dwds.de/api/frequency/?q=Entscheidung",
+    "fetchedAt": 1794089004779
+  },
+  "Augenblick": {
+    "data": {
+      "total": "53410843153",
+      "frequency": 3,
+      "q": "Augenblick",
+      "hits": 923245,
+      "lemma": "Augenblick"
+    },
+    "source": "https://www.dwds.de/api/frequency/?q=Augenblick",
+    "fetchedAt": 1794089004071
+  },
+  "entdecken": {
+    "data": {
+      "lemma": "entdecken",
+      "hits": 5005359,
+      "frequency": 4,
+      "q": "entdecken",
+      "total": "53410843153"
+    },
+    "source": "https://www.dwds.de/api/frequency/?q=entdecken",
+    "fetchedAt": 1794089004315
+  }
+}

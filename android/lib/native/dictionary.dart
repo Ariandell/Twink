@@ -56,11 +56,11 @@ String _nextDate(int timestamp) {
 extension _DictionaryView on _NativeHomeState {
   List<Json> get filteredEntries {
     var list = entries.where((w) {
-      final q = query.toLowerCase().trim();
+      final q = DwdsDictionary.fold(query).trim();
       return q.isEmpty ||
-          '${wordTitle(w)} ${w['translation'] ?? ''} ${w['info1'] ?? w['meaning'] ?? ''} ${w['info2'] ?? w['info'] ?? ''}'
-              .toLowerCase()
-              .contains(q);
+          DwdsDictionary.fold(
+            '${wordTitle(w)} ${w['translation'] ?? ''} ${w['info1'] ?? w['meaning'] ?? ''} ${w['info2'] ?? w['info'] ?? ''}',
+          ).contains(q);
     }).toList();
     if (duplicates) {
       final counts = <String, int>{};
@@ -168,7 +168,7 @@ extension _DictionaryView on _NativeHomeState {
                                 controller: searches,
                                 onChanged: (s) => update(() => query = s),
                                 decoration: const InputDecoration(
-                                  hintText: 'Поиск...',
+                                  hintText: 'Мои карточки и DWDS',
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,
@@ -177,6 +177,17 @@ extension _DictionaryView on _NativeHomeState {
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ),
+                            if (query.isNotEmpty)
+                              Square(
+                                'close',
+                                size: 28,
+                                border: false,
+                                tooltip: 'Очистить поиск',
+                                onTap: () {
+                                  searches.clear();
+                                  update(() => query = '');
+                                },
+                              ),
                           ],
                         ),
                       ),
@@ -244,7 +255,23 @@ extension _DictionaryView on _NativeHomeState {
             ),
           ),
         ),
-        if (list.isEmpty)
+        if (query.trim().isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            sliver: SliverToBoxAdapter(
+              child: _UnifiedSearchResults(
+                key: ValueKey('unified-search-$kind'),
+                query: query,
+                own: list,
+                allOwn: entries,
+                ownBuilder: _entryCard,
+                kind: kind,
+                store: store,
+                dictionary: widget.dictionary ?? DwdsDictionary.shared,
+              ),
+            ),
+          )
+        else if (list.isEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -288,11 +315,17 @@ extension _DictionaryView on _NativeHomeState {
                               children: [
                                 Square(
                                   'edit',
+                                  iconSize: 16,
+                                  tooltip: 'Редактировать',
                                   onTap: () => _editEntry(kind, w),
                                   border: false,
                                 ),
                                 Square(
                                   'trash',
+                                  iconSize: 16,
+                                  color: const Color(0xffef4444)
+                                      .withValues(alpha: .7),
+                                  tooltip: 'Удалить',
                                   onTap: () => _deleteEntry(kind, w),
                                   border: false,
                                 ),
@@ -343,15 +376,17 @@ extension _DictionaryView on _NativeHomeState {
               Square(
                 'edit',
                 color: muted(context),
-                size: 28,
+                size: 32,
+                iconSize: 16,
                 border: false,
                 tooltip: 'Редактировать',
                 onTap: () => _editEntry(kind, w),
               ),
               Square(
                 'trash',
-                color: const Color(0xffef4444),
-                size: 28,
+                color: const Color(0xffef4444).withValues(alpha: .7),
+                size: 32,
+                iconSize: 16,
                 border: false,
                 tooltip: 'Удалить',
                 onTap: () => _deleteEntry(kind, w),
@@ -378,7 +413,10 @@ extension _DictionaryView on _NativeHomeState {
                       horizontal: 5,
                       vertical: 2,
                     ),
-                    color: fg.withValues(alpha: .045),
+                    decoration: BoxDecoration(
+                      color: fg.withValues(alpha: .045),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
                     child: label(
                       '${w[field]}',
                       size: 11,

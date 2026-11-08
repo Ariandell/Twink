@@ -1,7 +1,7 @@
 name: twink_android
 description: "Twink: German vocabulary, spaced repetition and exams."
 publish_to: 'none'
-version: 0.3.11+20
+version: 0.3.18+27
 
 environment:
   sdk: ^3.13.2
@@ -19,6 +19,8 @@ dependencies:
   path_provider: ^2.1.6
   speech_to_text: ^7.5.0
   flutter_svg: ^2.3.2
+  html: ^0.15.7
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +30,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/data/
     - assets/icons/
     - assets/word-images/
     - assets/word-images/images/
