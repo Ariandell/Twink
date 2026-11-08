@@ -17,6 +17,8 @@
 **/*.apk
 **/*.zip
 **/coverage/
+/cometa/target/
+/cometa/android/out/
 web/public/classic/vendor/firebase-compat.js
 web/public/classic/vendor/twink-bridge.js
 android/assets/classic/
